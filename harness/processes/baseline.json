@@ -1,0 +1,13 @@
+{
+  "variant": "baseline",
+  "description": "ベースライン(プロセス指定なし): 要件のみ入力の一括実装。途中ゲートなし、最終成果物のみ人が確認",
+  "phases": [
+    {
+      "id": "build",
+      "name": "一括実装（要件のみ入力）",
+      "prompt": "01-build.md",
+      "skill": "全Skill（自律判断）",
+      "gate": true
+    }
+  ]
+}

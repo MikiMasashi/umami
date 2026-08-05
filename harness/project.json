@@ -1,0 +1,17 @@
+{
+  "name": "umami",
+  "docs": {
+    "requirements": "docs/requirements",
+    "specifications": "docs/specifications",
+    "specReviews": "docs/specifications/reviews",
+    "implementation": "docs/implementation",
+    "e2e": "docs/e2e",
+    "e2eResults": "docs/e2e/results",
+    "reviewResponses": "docs/reviews"
+  },
+  "source": {
+    "impl": ["src", "prisma"],
+    "e2eTests": "tests/e2e",
+    "unitTests": "src/**/*.test.ts(x)"
+  }
+}

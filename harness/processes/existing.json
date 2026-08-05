@@ -1,0 +1,41 @@
+{
+  "variant": "existing",
+  "description": "既存プロセス: 要件定義⇒IF設計&レビュー⇒実装&ユニット&コンポーネントテスト&レビュー⇒E2E設計&レビュー⇒E2E実施⇒完了",
+  "phases": [
+    {
+      "id": "requirements",
+      "name": "要件定義",
+      "prompt": "01-requirements.md",
+      "skill": "requirements-analyst",
+      "gate": true
+    },
+    {
+      "id": "interface-design",
+      "name": "インターフェース設計＆レビュー",
+      "prompt": "02-interface-design.md",
+      "skill": "backend-architect",
+      "gate": true
+    },
+    {
+      "id": "implementation",
+      "name": "実装＆ユニットテスト＆コンポーネントテスト＆レビュー",
+      "prompt": "03-implementation.md",
+      "skill": "backend-architect",
+      "gate": true
+    },
+    {
+      "id": "e2e-design",
+      "name": "E2Eテスト設計＆レビュー",
+      "prompt": "04-e2e-design.md",
+      "skill": "test-engineer",
+      "gate": true
+    },
+    {
+      "id": "e2e-run",
+      "name": "E2Eテスト実施",
+      "prompt": "05-e2e-run.md",
+      "skill": "test-engineer",
+      "gate": true
+    }
+  ]
+}
