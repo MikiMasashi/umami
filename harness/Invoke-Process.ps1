@@ -43,8 +43,12 @@ param(
   # 巻き戻し先フェーズ。id(例 implementation) か 1始まりの番号(例 3)。省略時は直近フェーズ。
   [string]$ToPhase,
   [switch]$Status,
-  [string]$Model = "sonnet",
-  # 無人実行: bypassPermissions（Bashやテスト実行も自動許可）。検証用の隔離worktreeで使う想定。
+  # 実行エージェント。省略時は harness/experiment.json の agent（さらに省略時は claude）。
+  # -Init 時に state.json へ保存され、以降のフェーズは同じエージェントで実行される。
+  [ValidateSet("claude","copilot")][string]$Agent,
+  # 使用モデル。省略時は experiment.json の agents.<agent>.model。
+  [string]$Model,
+  # 無人実行: すべてのツールを自動許可（Bashやテスト実行も許可）。検証用の隔離worktreeで使う想定。
   [switch]$Unattended
 )
 
@@ -65,6 +69,11 @@ $StateDir   = Join-Path $RepoRoot ".harness"
 $StateFile  = Join-Path $StateDir "state.json"
 $MetricsFile= Join-Path $StateDir "metrics.jsonl"
 $ProjectFile= Join-Path $RepoRoot "harness/project.json"
+$ExperimentFile = Join-Path $RepoRoot "harness/experiment.json"
+
+# エージェント（claude / copilot）ごとのCLI差分を吸収するアダプタ層。
+# 呼び出し側はここを通して「正規化された1件の計測レコード」だけを受け取る。
+. (Join-Path $RepoRoot "harness/Agents.ps1")
 
 # --- プロジェクト固有情報の外出し（harness/project.json） ---
 # 「プロジェクト名 / 設計書パス / ソースコードパス」をプロンプトから切り離し、
@@ -78,6 +87,36 @@ function Get-Project {
     $script:ProjectCache = (Read-Utf8 $ProjectFile) | ConvertFrom-Json
   }
   $script:ProjectCache
+}
+
+# --- 実験条件の外出し（harness/experiment.json） ---
+# 「どのエージェントを・どのモデルで回すか」はプロジェクト固有値ではなく**変種をまたいだ実験条件**なので
+# project.json とは分ける。10サンプル取得中に変えてはいけない値だけをここに置く。
+$script:ExperimentCache = $null
+function Get-Experiment {
+  if ($null -eq $script:ExperimentCache) {
+    if (Test-Path $ExperimentFile) {
+      $script:ExperimentCache = (Read-Utf8 $ExperimentFile) | ConvertFrom-Json
+    } else {
+      # 無くても動くが、実験条件が記録されないまま走るのは望ましくないので警告する。
+      Write-Host "harness/experiment.json がありません。既定（agent=claude / model=sonnet）で実行します。" -ForegroundColor DarkYellow
+      $script:ExperimentCache = [pscustomobject]@{
+        agent  = 'claude'
+        agents = [pscustomobject]@{ claude = [pscustomobject]@{ model = 'sonnet' } }
+      }
+    }
+  }
+  $script:ExperimentCache
+}
+
+# 指定エージェントの設定（model / expectModel / maxTurns / maxAiCredits）を返す。未定義なら空。
+function Get-AgentConfig($agent) {
+  $bag = (Get-Experiment).agents
+  if ($bag) {
+    $p = $bag.PSObject.Properties[$agent]
+    if ($p -and $p.Value) { return $p.Value }
+  }
+  [pscustomobject]@{}
 }
 
 # camelCase のキーを SNAKE_UPPER へ（specReviews -> SPEC_REVIEWS / e2eResults -> E2E_RESULTS）。
@@ -137,7 +176,8 @@ function Save-State($s) {
 function Show-Status($s) {
   if (-not $s) { Write-Host "状態なし。-Init で開始してください。"; return }
   $proc = (Read-Utf8 (Join-Path $RepoRoot "harness/processes/$($s.variant).json")) | ConvertFrom-Json
-  Write-Host "Story=$($s.story)  Variant=$($s.variant)  Status=$($s.status)"
+  $agent = Get-Prop $s 'agent'; if (-not $agent) { $agent = 'claude' }
+  Write-Host "Story=$($s.story)  Variant=$($s.variant)  Agent=$agent  Status=$($s.status)"
   for ($i=0; $i -lt $proc.phases.Count; $i++) {
     $mark = if ($i -lt $s.phaseIndex) { "[x]" } elseif ($i -eq $s.phaseIndex -and $s.status -eq "awaiting-review") { "[>]" } else { "[ ]" }
     Write-Host ("  {0} {1}. {2}" -f $mark, ($i+1), $proc.phases[$i].name)
@@ -149,6 +189,14 @@ function Set-Prop($obj, $name, $value) {
   if ($obj -is [System.Collections.IDictionary]) { $obj[$name] = $value }
   else { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
   $obj
+}
+# 同上の読み出し版。未設定なら $null（旧サンプルの state.json には無いキーがあるため必須）。
+function Get-Prop($obj, $name) {
+  if ($obj -is [System.Collections.IDictionary]) {
+    if ($obj.Contains($name)) { return $obj[$name] } else { return $null }
+  }
+  $p = $obj.PSObject.Properties[$name]
+  if ($p) { $p.Value } else { $null }
 }
 
 # --- フェーズごとのベースSHA（巻き戻し先）を state に記録/参照する ---
@@ -188,76 +236,78 @@ function Set-RolledBackMetrics($phaseIds) {
   if ($tagged -gt 0) { Write-Host "metrics: $tagged 件を rolled_back=true でタグ付けしました。" -ForegroundColor DarkGray }
 }
 
-# claude -p の実行 + メトリクス記録の共通ランナー（通常フェーズと修正フェーズで共用）。
-# プロンプトは stdin 投入（引数クオート事故を回避）。$OutputEncoding=UTF-8 で化けずに渡る。
+# エージェント実行 + メトリクス記録の共通ランナー（通常フェーズと修正フェーズで共用）。
 #
-# 出力は --output-format stream-json（1行1JSONのJSONL）でリアルタイムに受ける。
-# ツール実行/発話のたびに経過時間付きの行を流すことで「動いている/止まっている」を可視化する。
-# 最終メトリクスは末尾の type=="result" イベントから取得（従来の json 形式と同じフィールド）。
-function Run-Claude($prompt, $phaseId, $variant, $story, $permMode) {
-  $sw     = [System.Diagnostics.Stopwatch]::StartNew()
-  $result = $null
-  $turns  = 0
+# エージェント（claude / copilot）ごとのCLI差分は Agents.ps1 の Invoke-Agent に閉じ込めてあり、
+# ここへは**正規化済みの1件の計測レコード**が返る。したがってどちらのエージェントで回しても
+# metrics.jsonl の列と定義は完全に同一になる（harness/measurement_parity.md）。
+#
+# 主指標（duration_ms / num_turns / tool_calls）はハーネス側の計測値。
+# エージェント申告値は agent_* / api_* に併記し、突合用にとどめる。
+# コストは通貨が揃わない（Claude=USD / Copilot=AIクレジット）ため cost_native + cost_unit で
+# 生値のまま残す。エージェントをまたいだ比較にはトークン量を使うこと。
+function Run-Agent($prompt, $phaseId, $variant, $story, $agent, $permission) {
+  $cfg    = Get-AgentConfig $agent
+  $model  = if ($Model) { $Model } else { $cfg.model }
+  $limits = @{ maxTurns = $cfg.maxTurns; maxAiCredits = $cfg.maxAiCredits }
 
-  $prompt | claude -p --output-format stream-json --verbose --model $Model --permission-mode $permMode |
-    ForEach-Object {
-      if (-not $_) { return }
-      $evt = $null; try { $evt = $_ | ConvertFrom-Json } catch { return }
-      $t = "{0:mm\:ss}" -f $sw.Elapsed
-      switch ($evt.type) {
-        'assistant' {
-          $turns++
-          foreach ($b in $evt.message.content) {
-            if ($b.type -eq 'tool_use') {
-              Write-Host ("  [{0}] 🔧 {1}" -f $t, $b.name) -ForegroundColor DarkCyan
-            } elseif ($b.type -eq 'text' -and "$($b.text)".Trim()) {
-              $s = ($b.text -replace '\s+',' ').Trim()
-              if ($s.Length -gt 100) { $s = $s.Substring(0,100) + '…' }
-              Write-Host ("  [{0}] 💬 {1}" -f $t, $s) -ForegroundColor Gray
-            }
-          }
-        }
-        'result' { $result = $evt }
-      }
-    }
-  $sw.Stop()
+  $r = Invoke-Agent -Agent $agent -Prompt $prompt -Model $model -Permission $permission -Limits $limits
 
-  if (-not $result) {
-    throw "フェーズ '$phaseId' が result イベントを返さずに終了しました。手動確認してください。"
+  # 実験条件の検証: 実際に使われたモデルが期待値と違うなら、気づかず走り切る前にここで止める。
+  if ($cfg.expectModel -and $r.model -and $r.model -ne $cfg.expectModel) {
+    throw "モデル不一致: 期待=$($cfg.expectModel) 実際=$($r.model)  実験条件が変わっています。"
   }
+
   # メトリクス追記（成果③のばらつき検証／成果①のリワークコスト計測の土台）
   $metric = [ordered]@{
-    ts          = (Get-Date).ToString("o")
-    story       = $story
-    variant     = $variant
-    phase       = $phaseId
-    is_error    = $result.is_error
-    duration_ms = $result.duration_ms
-    num_turns   = $result.num_turns
-    cost_usd    = $result.total_cost_usd
-    session_id  = $result.session_id
+    ts                 = (Get-Date).ToString("o")
+    story              = $story
+    variant            = $variant
+    phase              = $phaseId
+    agent              = $r.agent
+    agent_version      = $r.agent_version
+    model              = $r.model                 # 実行時に解決された実体
+    model_requested    = $model                   # CLI へ渡した値（エイリアスの場合がある）
+    permission         = $permission
+    is_error           = $r.is_error
+    duration_ms        = $r.duration_ms           # ★ハーネス計測（主指標）
+    agent_duration_ms  = $r.agent_duration_ms     # ◆エージェント申告
+    api_duration_ms    = $r.api_duration_ms       # ◆
+    num_turns          = $r.num_turns             # ★ハーネス計測
+    agent_num_turns    = $r.agent_num_turns       # ◆
+    tool_calls         = $r.tool_calls            # ★ハーネス計測
+    input_tokens       = $r.input_tokens           # キャッシュに載らなかった入力
+    total_input_tokens = $r.total_input_tokens     # input + cache_read + cache_write
+    output_tokens      = $r.output_tokens
+    cache_read_tokens  = $r.cache_read_tokens
+    cache_write_tokens = $r.cache_write_tokens
+    cost_native        = $r.cost_native
+    cost_unit          = $r.cost_unit
+    premium_requests   = $r.premium_requests
+    session_id         = $r.session_id
   }
   if (-not (Test-Path $StateDir)) { New-Item -ItemType Directory -Path $StateDir -Force | Out-Null }
   Append-Utf8 $MetricsFile ($metric | ConvertTo-Json -Compress)
 
-  if ($result.is_error) {
-    # claude の結果本文(result)とサブタイプを添えて失敗理由を即表示する。
-    # 従来はこれらを握り潰していたため、実エラー(例: "Stream idle timeout")が
-    # トランスクリプトを掘るまで分からなかった。
-    $errText = "$($result.result)".Trim()
-    throw "フェーズ '$phaseId' が is_error=true で終了 (subtype=$($result.subtype)): $errText  手動確認してください。"
+  if ($r.is_error) {
+    # 失敗理由を即表示する。握り潰すと実エラー(例: "Stream idle timeout")が
+    # トランスクリプトを掘るまで分からない。
+    throw "フェーズ '$phaseId' が異常終了しました: $($r.error_detail)  手動確認してください。"
   }
-  Write-Host ("完了: 経過 {0:mm\:ss} / duration={1}s turns={2} cost=`${3}" -f $sw.Elapsed, [math]::Round($result.duration_ms/1000,1), $result.num_turns, $result.total_cost_usd) -ForegroundColor Green
+  $cost = if ($null -ne $r.cost_native) { "{0} {1}" -f [math]::Round($r.cost_native, 4), $r.cost_unit } else { "n/a" }
+  Write-Host ("完了: 経過 {0:mm\:ss} / turns={1} tools={2} tokens(in/out)={3}/{4} cost={5}" -f `
+    ([timespan]::FromMilliseconds($r.duration_ms)), $r.num_turns, $r.tool_calls, `
+    $r.input_tokens, $r.output_tokens, $cost) -ForegroundColor Green
 }
 
-function Invoke-Phase($phase, $variant, $story) {
+function Invoke-Phase($phase, $variant, $story, $agent) {
   $promptPath = Join-Path $RepoRoot "harness/prompts/$variant/$($phase.prompt)"
   if (-not (Test-Path $promptPath)) { throw "プロンプト未定義: $promptPath" }
   $prompt = Expand-Prompt (Read-Utf8 $promptPath) @{ 'STORY' = $story }
 
-  $permMode = if ($Unattended) { "bypassPermissions" } else { "acceptEdits" }
-  Write-Host "`n=== フェーズ実行: $($phase.name)  (skill: $($phase.skill), perm: $permMode) ===" -ForegroundColor Cyan
-  Run-Claude $prompt $phase.id $variant $story $permMode
+  $permission = if ($Unattended) { "all" } else { "edit" }
+  Write-Host "`n=== フェーズ実行: $($phase.name)  (agent: $agent, skill: $($phase.skill), perm: $permission) ===" -ForegroundColor Cyan
+  Run-Agent $prompt $phase.id $variant $story $agent $permission
 }
 
 # PR番号を現在ブランチから引く（無ければ $null）。
@@ -346,7 +396,7 @@ function Publish-CommentReplies($prNumber, $items, $respPath) {
 # 直前フェーズの成果物に対するレビュー指摘を、固定プロンプト(99-revise.md)に注入して再実行する。
 # 反映すべき新規コメントが無ければ $null。ありなら { PrNumber, Items, RespPath } を返す
 # （PRへの返信投稿は push 後に呼び出し側で行う）。
-function Invoke-Revise($phase, $variant, $story, $since) {
+function Invoke-Revise($phase, $variant, $story, $since, $agent) {
   $prNumber = Get-PrNumber
   if (-not $prNumber) { throw "PRが見つかりません。ゲートでPRが作成されているか確認してください。" }
 
@@ -372,9 +422,9 @@ function Invoke-Revise($phase, $variant, $story, $since) {
     @{ 'STORY' = $story; 'PHASE_NAME' = $phase.name; 'SKILL' = $phase.skill; 'RESPONSE_FILE' = $respRel } `
     @{ 'REVIEW_COMMENTS' = $commentsMd }
 
-  $permMode = if ($Unattended) { "bypassPermissions" } else { "acceptEdits" }
-  Write-Host "`n=== 修正フェーズ: $($phase.name)  (skill: $($phase.skill), perm: $permMode) ===" -ForegroundColor Cyan
-  Run-Claude $prompt "$($phase.id)-revise" $variant $story $permMode
+  $permission = if ($Unattended) { "all" } else { "edit" }
+  Write-Host "`n=== 修正フェーズ: $($phase.name)  (agent: $agent, skill: $($phase.skill), perm: $permission) ===" -ForegroundColor Cyan
+  Run-Agent $prompt "$($phase.id)-revise" $variant $story $agent $permission
 
   [pscustomobject]@{ PrNumber = $prNumber; Items = $items; RespPath = $respPath }
 }
@@ -422,9 +472,20 @@ if ($Status) { Show-Status $state; return }
 
 if ($Init) {
   if (-not $Story) { throw "-Init には -Story が必要です。" }
-  $state = [ordered]@{ story=$Story; variant=$Variant; phaseIndex=0; status="ready" }
+  # エージェントはサンプル開始時に確定させ、以降のフェーズは同じもので回す。
+  # 途中で切り替わると、そのサンプルの計測値が2つのエージェントの混合になってしまうため。
+  $initAgent = if ($Agent) { $Agent } elseif ((Get-Experiment).agent) { (Get-Experiment).agent } else { 'claude' }
+  $state = [ordered]@{ story=$Story; variant=$Variant; agent=$initAgent; phaseIndex=0; status="ready" }
 }
 if (-not $state) { throw "状態がありません。まず -Init で開始してください。" }
+
+# 実行エージェントは state.json（サンプル開始時に確定）を正とする。
+# 本機能の導入前に開始したサンプルには agent が無いため、その場合は claude とみなす。
+$RunAgent = Get-Prop $state 'agent'
+if (-not $RunAgent) { $RunAgent = 'claude' }
+if ($Agent -and $Agent -ne $RunAgent) {
+  throw "このサンプルは agent=$RunAgent で開始されています。-Agent $Agent への途中変更はできません（計測値が混合するため）。新しいサンプルを開始してください。"
+}
 
 $proc = (Read-Utf8 (Join-Path $RepoRoot "harness/processes/$($state.variant).json")) | ConvertFrom-Json
 
@@ -437,7 +498,7 @@ if ($Revise) {
   if ($revIdx -lt 0) { throw "修正対象のフェーズがありません。" }
   $revPhase = $proc.phases[$revIdx]
 
-  $rev = Invoke-Revise $revPhase $state.variant $state.story $state.lastRevisedAt
+  $rev = Invoke-Revise $revPhase $state.variant $state.story $state.lastRevisedAt $RunAgent
   if ($rev) {
     Ensure-Commit @{ id = "$($revPhase.id)-revise" } $state.story
     try { Ensure-PR $state } catch { Write-Host "PR連携をスキップ: $_" -ForegroundColor DarkYellow }
@@ -535,7 +596,7 @@ $phase = $proc.phases[$idx]
 Set-PhaseBase $state $phase.id ((git rev-parse HEAD).Trim())
 Save-State $state
 
-Invoke-Phase $phase $state.variant $state.story
+Invoke-Phase $phase $state.variant $state.story $RunAgent
 
 # 成果物のコミットを担保（エージェントの承認状況に依存しない）
 Ensure-Commit $phase $state.story

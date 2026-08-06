@@ -4,7 +4,9 @@
 どう進めるかはあなた自身の判断に委ねます。必要と判断すれば `requirements-analyst` / `backend-architect` /
 `frontend-engineer` / `test-engineer` の各スキルを自律的に使い分けてかまいません（使わなくてもかまいません）。
 
-対象プロジェクト: **{{PROJECT_NAME}}**（実装は {{SOURCE_IMPL}} 配下、E2E テストは `{{SOURCE_E2E_TESTS}}` 配下）
+対象プロジェクト: **{{PROJECT_NAME}}**
+（実装は {{SOURCE_IMPL}} 配下、ユニット／コンポーネントテストは {{SOURCE_UNIT_TESTS}} 配下、
+E2E テストは `{{SOURCE_E2E_TESTS}}` 配下）
 
 ## 入力（要件はこれだけ）
 - `stories/{{STORY}}/brief.md` … このユーザーストーリーの生の要望
@@ -12,15 +14,20 @@
 ## やること
 - 上記の要望を満たすように、リポジトリ既存の雛形上に**既存のコードスタイルに合わせて**実装する。
 - テスト一式を書き、ローカルで実行してすべて合格させる（テストの種類・範囲・粒度は自身で判断する）。
+  テストは**テストランナーが拾える置き場所・命名規則**（設定ファイルの include / testMatch 等）に必ず従うこと。
 
 ## 出力
 - 実装コード（{{SOURCE_IMPL}} 配下。E2E テストを書く場合は `{{SOURCE_E2E_TESTS}}` 配下）
 - テスト一式
+- ライブラリを追加した場合のみ、その記録（上記「制約」を参照）
 - ドキュメント類の作成は任意（必須成果物ではない）
 
 ## 制約（検証の再現性のため厳守）
 - `stories/{{STORY}}/brief.md` **以外**の `stories/` 配下ファイル（`acceptance-criteria.md` / `injected-defects.md` など）は検証時に使用するものなので**絶対に読み込まないこと**。
 - 欠陥の意図的な作り込みは**しない**（欠陥注入は実験者が別工程で人手で行う）。
 - `stories/` 配下・`harness/` 配下のファイルは編集しない。
-- 依存バージョンは lockfile で固定されているため、`package-lock.json` は変更しない。
+- **既存依存のバージョンは変更しない**（lockfile で固定されている。アップグレード・ダウングレード禁止）。
+  パッケージマネージャはこのリポジトリの lockfile に対応するものを使う。
+- ライブラリを追加した場合は、`{{DOCS_IMPLEMENTATION}}/implementation-notes-{{STORY}}.md` に
+  **追加したライブラリと採用理由**を記録する（追加しなかった場合はこのファイルの作成は不要）。
 - テストがすべて合格することを確認してからコミットする（メッセージ: `[{{STORY}}] baseline implementation`）。

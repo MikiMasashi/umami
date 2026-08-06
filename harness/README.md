@@ -8,8 +8,12 @@
 - **プロセス変種ごとにスクリプト1本**（`Invoke-Process.ps1`）。工程は「フェーズ」として定義し、
   状態ファイル `.harness/state.json` で進行を管理 → オーケストレーター（人間）の操作は
   「同じコマンドを叩く／PRを見る」に固定され、順序ミスが起きない。
-- **各フェーズ = 1回の `claude -p`**。プロンプトは `harness/prompts/<variant>/*.md` に外出しし
-  stdin投入・`--model` 固定 → **指示文の固定化とプロンプト汚染の排除**。
+- **各フェーズ = 1回のエージェント実行**（`claude -p` / `copilot -p`）。プロンプトは
+  `harness/prompts/<variant>/*.md` に外出しし、モデルは `experiment.json` で固定
+  → **指示文の固定化とプロンプト汚染の排除**。
+- **実行エージェントは Claude / Copilot を切り替え可能**（`-Agent`）。CLI差分は `Agents.ps1` に
+  閉じ込め、**どちらで回しても `metrics.jsonl` の列と定義が完全に一致**する
+  → 詳細は [measurement_parity.md](measurement_parity.md)。
 - **フェーズ間の文脈はコミット済み成果物ファイルで受け渡す**（セッション継続を使わない）
   → 再現性を最大化。
 - **プロジェクト固有情報は `project.json` に外出し**（プロジェクト名・設計書パス・ソースコードパス）
@@ -17,19 +21,23 @@
   `project.json` を差し替えるだけ**で済む（＝同一プロセスを別プロジェクトで回せる＝検証の外的妥当性）。
 - **全工程の区切りごとにレビューゲート**で停止。人間がPRを確認してから次へ。
 - **サンプルは git worktree で隔離**（`Start-Sample.ps1`）→ 相互汚染なく10サンプル取得。
-- 各フェーズの `duration_ms / cost_usd / num_turns` を `.harness/metrics.jsonl` に自動記録
-  → 成果③（ばらつき検証）の計測土台。
+- 各フェーズの実行時間・ターン数・ツール呼び出し数・トークン量・コストを
+  `.harness/metrics.jsonl` に自動記録 → 成果③（ばらつき検証）の計測土台。
 
 ## ディレクトリ
 ```
 harness/
   project.json                  # プロジェクト固有情報（名前・設計書パス・ソースコードパス）
+  experiment.json               # 実験条件（既定エージェント・エージェント別モデル・上限）
+  Agents.ps1                    # エージェント差分の吸収層（claude / copilot → 正規化レコード）
   processes/existing.json       # 既存プロセスのフェーズ定義（順序・使用skill・ゲート）
   processes/baseline.json       # ベースライン（プロセス指定なし・一括実装）のフェーズ定義
   prompts/existing/*.md         # フェーズごとの固定プロンプト
   prompts/baseline/*.md         # ベースライン用の固定プロンプト（一括実装1本）
   Invoke-Process.ps1            # ステートフル実行 + ゲート停止 + メトリクス収集
   Start-Sample.ps1              # worktree隔離ラッパ（サンプル開始）
+  measurement_indicators.md     # 測定指標一覧（PPT P13〜P16 との対応）
+  measurement_parity.md         # エージェント切替時の計測パリティ設計
 stories/US-001/
   brief.md                      # 生の要望（人手）
   acceptance-criteria.md        # 受入条件＝網羅度の基準（人手・固定）
@@ -43,6 +51,7 @@ stories/US-001/
 ```json
 {
   "name": "KeihiSeisan",
+  "setup": ["npm ci"],
   "docs": {
     "requirements":    "docs/requirements",
     "specifications":  "docs/specifications",
@@ -53,11 +62,15 @@ stories/US-001/
     "reviewResponses": "docs/reviews"
   },
   "source": {
-    "impl":     ["apps/api", "apps/web"],
-    "e2eTests": "tests/e2e"
+    "impl":      ["apps/api", "apps/web"],
+    "unitTests": ["apps/api/test", "apps/web/test"],
+    "e2eTests":  "tests/e2e"
   }
 }
 ```
+
+`setup` は `Start-Sample.ps1` が worktree 内で実行するコマンド列（下記「計測の注意」参照）。
+プロンプトへは差し込まれない（トークン化されるのは `docs` と `source` のみ）。
 
 **トークン名の規則**: `<セクション>_<キー>` を SNAKE_UPPER にしたもの。
 `docs.specReviews` → `{{DOCS_SPEC_REVIEWS}}` / `source.e2eTests` → `{{SOURCE_E2E_TESTS}}` /
@@ -74,7 +87,12 @@ stories/US-001/
 | `{{DOCS_E2E}}` / `{{DOCS_E2E_RESULTS}}` | docs/e2e / docs/e2e/results |
 | `{{DOCS_REVIEW_RESPONSES}}` | docs/reviews（`-Revise` の回答ファイル置き場。スクリプトも同じ値を参照する） |
 | `{{SOURCE_IMPL}}` | \`apps/api\` / \`apps/web\` |
+| `{{SOURCE_UNIT_TESTS}}` | \`apps/api/test\` / \`apps/web/test\` |
 | `{{SOURCE_E2E_TESTS}}` | tests/e2e |
+
+> `unitTests` は「テストランナーが拾える置き場所」を明示するためのもの。プロジェクトによっては
+> `tests/` 配下ではなく実装と併置（例 umami の `src/**/*.test.ts(x)`）で、そこを外すと
+> **テストが1件も実行されないまま合格扱いになる**ため、必ず実体に合わせること。
 
 書き方の注意:
 - **配列値**はバッククオート付きで連結される（`` `apps/api` / `apps/web` ``）ので、
@@ -83,6 +101,68 @@ stories/US-001/
 - 未定義のトークンがプロンプトに残っていると**実行前に停止**する
   （literal な `{{DOCS_X}}` が成果物に書かれる静かな劣化を防ぐため）。
 - レビューコメント（`{{REVIEW_COMMENTS}}`）は自由文のため、この検査の後に差し込まれる。
+
+## 実験条件（`experiment.json`）とエージェント切替
+
+「どのエージェントを・どのモデルで回すか」は**プロジェクト固有値ではなく変種をまたいだ実験条件**なので、
+`project.json` とは分けて `experiment.json` に置く。**10サンプル取得中は変更禁止**。
+
+```json
+{
+  "agent": "claude",
+  "agents": {
+    "claude":  { "model": "sonnet",           "expectModel": null, "maxTurns": null },
+    "copilot": { "model": null,               "expectModel": null, "maxAiCredits": null }
+  }
+}
+```
+
+| キー | 意味 |
+|------|------|
+| `agent` | 既定の実行エージェント（`claude` / `copilot`）。`-Agent` で上書きできる |
+| `agents.<name>.model` | CLI の `--model` へ渡す値。`null` ならエージェント既定に従う |
+| `agents.<name>.expectModel` | 実行時に解決されたモデルIDの**期待値**。不一致ならそのフェーズを失敗させる（比較が壊れたまま走り切るのを防ぐ） |
+| `agents.claude.maxTurns` / `agents.copilot.maxAiCredits` | 暴走時の上限（任意） |
+
+エージェントの指定:
+```powershell
+# Copilot でサンプルを開始（worktree名・ブランチ名にも copilot が入る）
+powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -Agent copilot
+```
+
+- **エージェントはサンプル開始時に確定**し、`state.json` に保存される。以降のフェーズは同じもので走り、
+  途中で `-Agent` を変えようとすると**エラーで停止**する（1サンプルの計測値が2つのエージェントの
+  混合になるのを防ぐため）。
+- **サンプルIDにエージェント名が入る**（`existing-copilot-1`）。入れないと集計時に同一 variant の
+  行を区別できず、「プロセスの差」を測っているつもりで「エージェントの差」を測ってしまう。
+- **エージェントをまたいだサンプルを1つの分布に混ぜないこと**。
+- 権限モードの対応: `acceptEdits ⇔ --allow-all-tools --deny-tool=shell` /
+  `bypassPermissions ⇔ --allow-all`（`-Unattended`）。
+- Skill（`.claude/skills/`）は **Copilot も同じディレクトリを探索する**ので共通で使える。
+
+> どの指標がエージェント差の影響を受け、それをどう吸収しているかは
+> [measurement_parity.md](measurement_parity.md) に整理してある。
+
+## 計測される項目（`.harness/metrics.jsonl`・1フェーズ1行）
+
+**エージェントによらず同じ列・同じ定義**で記録される。主指標はハーネス自身が測り、
+エージェントの申告値は `agent_*` / `api_*` に併記して突合用にとどめる。
+
+| 列 | 意味 |
+|----|------|
+| `agent` / `agent_version` / `model` / `model_requested` / `permission` | 実験条件の来歴 |
+| `duration_ms` | **フェーズ実行時間（主指標）**。ハーネスのストップウォッチ |
+| `agent_duration_ms` / `api_duration_ms` | エージェント申告の実行時間・API時間（参考） |
+| `num_turns` / `tool_calls` | **LLM往復回数・ツール呼び出し回数**。ストリームイベントから自前計数 |
+| `agent_num_turns` | エージェント申告のターン数（参考） |
+| `input_tokens` / `total_input_tokens` / `output_tokens` / `cache_read_tokens` / `cache_write_tokens` | トークン量。`input_tokens` は**キャッシュ分を除いた値**に統一（`total_input_tokens` が cache 込みの総量） |
+| `cost_native` / `cost_unit` | 課金の生値と単位（Claude=`usd` / Copilot=`aiu`）。**通貨が違うので換算しない** |
+| `premium_requests` | Copilot のみ。粒度が粗いのでコスト指標には使わない |
+| `is_error` / `session_id` / `ts` / `story` / `variant` / `phase` | 実行の成否・追跡・分類キー |
+| `rolled_back` | `-Rollback` で破棄した試行に付くフラグ（集計時に除外する） |
+
+> **エージェントをまたいでコストを比較するときはトークン量を使う**こと。
+> 金額は通貨が違うため直接比較できない（PPT P14 の定義「生成AI利用料＝トークン量×単価」とも一致）。
 
 ## 既存プロセスのフェーズ（`-Variant existing`）
 要件定義 → IF設計&レビュー → 実装&ユニット&コンポーネントテスト&レビュー → E2E設計&レビュー → E2E実施
@@ -97,17 +177,23 @@ stories/US-001/
 ## 使い方
 
 ### 前提
-- `claude` CLI が使えること（`--print` ヘッドレス実行）
+- 使うエージェントの CLI が認証済みで動くこと
+  - Claude: `claude`（`--print` ヘッドレス実行）
+  - Copilot: `copilot`（`copilot login` 済み。非対話実行に対応した版が必要）
 - PR連携を使う場合は `gh` が認証済みであること（無くてもフェーズ実行自体は動く）
+- `harness/experiment.json` をコミット済みにしておくこと（worktree はコミット済みファイルしか持たない）
 - `stories/US-001/` の brief / acceptance-criteria を先に埋めること
 
 ### 1サンプルを回す（隔離worktree）
 ```powershell
 # サンプル1を開始（要件定義まで実行してゲート停止・PR作成）
-powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing
+# -Agent を省略すると experiment.json の agent が使われる
+powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -Agent claude
+
+# （worktree作成後、project.json の setup が自動実行される。飛ばす場合は -SkipSetup）
 
 # 表示されたworktreeに入り、PRをレビューしたら次フェーズへ
-cd ..\KeihiSeisan-sample-existing-1
+cd ..\KeihiSeisan-sample-existing-claude-1
 powershell -File harness/Invoke-Process.ps1 -Revise     # ← PRに指摘を残したら反映（何度でも可）
 powershell -File harness/Invoke-Process.ps1 -Continue   # ← レビューOKなら次フェーズへ（ゲートごとに繰り返す）
 powershell -File harness/Invoke-Process.ps1 -Status     # 進捗確認
@@ -121,6 +207,34 @@ powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant baseline
 # 最終成果物のPRを人が確認する（レビュー時間の計測はここだけ）
 ```
 テスト実行等を自動許可して無人で流す場合は `-Unattended` を付ける（隔離worktree前提）。
+
+### 計測の注意: 依存インストールはフェーズの外で済ませる
+worktree には `node_modules` が無いため、**フェーズを回す前に依存をインストール**する必要がある。
+フェーズ実行中にインストールが走ると、その待ち時間が `metrics.jsonl` の `duration_ms`
+（＝リードタイム指標）にそのまま混入し、サンプル間のばらつき（成果③）を汚すため。
+
+これは `Start-Sample.ps1` が **`project.json` の `setup` を worktree 内で自動実行**して担保する
+（`-SkipSetup` で抑止可）。`setup` は配列で、上から順に実行される。
+
+```json
+"setup": ["npm ci"]
+```
+- `npm install` ではなく **`npm ci`（pnpm なら `pnpm install --frozen-lockfile`）を推奨**。
+  lockfile と `package.json` が食い違うと失敗するため、「既存依存のバージョンは変更しない」という
+  検証ルールをセットアップ時点で機械的に強制できる。
+- 型生成などインストール後の手順が要るプロジェクトは、そのまま配列に足す
+  （例: `["pnpm install --frozen-lockfile", "pnpm build-db-client"]`）。
+- 失敗した場合は **worktree を残したまま停止**する（原因調査のため自動削除はしない）。
+  復旧手順はエラーメッセージに表示される。
+- **`harness/project.json` は事前にコミットしておくこと**。worktree はコミット済みファイルしか
+  持たないため、未コミットだと worktree 側に存在せずセットアップもフェーズ実行も失敗する。
+
+依存の扱いのルール（既存プロセス／ベースラインで**同一**）:
+- **既存依存のバージョン変更は禁止**（lockfile で固定。環境差を排除するため）
+- **新規ライブラリの追加は許可**（通常の開発と条件を揃え、依存選定をレビュー対象として残すため）
+- 追加した場合は成果物（`implementation-notes-<STORY>.md` / `e2e-<STORY>.md`）に理由を記録させる。
+  追加の**有無自体**は lockfile の差分でも判別できるので、集計時は
+  「依存追加が起きたサンプル」をフラグとして扱える。
 
 ### レビュー指摘の反映（修正フェーズ）
 各ゲート（`awaiting-review`）では、次の2つの経路がある。

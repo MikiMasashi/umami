@@ -1,0 +1,16 @@
+{
+  "agent": "claude",
+  "agents": {
+    "claude": {
+      "model": "sonnet",
+      "expectModel": null,
+      "maxTurns": null
+    },
+    "copilot": {
+      "model": "claude-sonnet-5",
+      "expectModel": null,
+      "maxAiCredits": null
+    }
+  },
+  "note": "実験条件。10サンプル取得中は変更禁止（変更したらサンプル取得をやり直すこと）。model は CLI へ渡す値、expectModel は実行時に解決されたモデルIDの期待値（不一致ならフェーズを失敗させる）。model=null はエージェント既定に従う。"
+}

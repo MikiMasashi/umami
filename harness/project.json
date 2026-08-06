@@ -1,5 +1,6 @@
 {
   "name": "umami",
+  "setup": ["npm ci"],
   "docs": {
     "requirements": "docs/requirements",
     "specifications": "docs/specifications",
@@ -11,7 +12,7 @@
   },
   "source": {
     "impl": ["src", "prisma"],
-    "e2eTests": "tests/e2e",
-    "unitTests": "src/**/*.test.ts(x)"
+    "unitTests": ["src/test"],
+    "e2eTests": "tests/e2e"
   }
 }
