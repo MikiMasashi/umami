@@ -1,6 +1,6 @@
 {
   "name": "umami",
-  "setup": ["npm ci"],
+  "setup": ["pnpm install"],
   "docs": {
     "requirements": "docs/requirements",
     "specifications": "docs/specifications",
