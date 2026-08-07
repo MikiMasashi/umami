@@ -57,6 +57,7 @@ export async function addWebsite(
   auth: Auth,
   name: string,
   domain: string,
+  options?: { notes?: string | null; teamId?: string },
 ) {
   const response = await request.post('/api/websites', {
     headers: authHeaders(auth),
@@ -65,7 +66,37 @@ export async function addWebsite(
       createdBy: umamiUser.id,
       name,
       domain,
+      ...options,
     },
+  });
+
+  expect(response.status()).toBe(200);
+
+  return await response.json();
+}
+
+export async function updateWebsite(
+  request: APIRequestContext,
+  auth: Auth,
+  websiteId: string,
+  data: Record<string, unknown>,
+) {
+  return request.post(`/api/websites/${websiteId}`, {
+    headers: authHeaders(auth),
+    data,
+  });
+}
+
+export async function addTeamUser(
+  request: APIRequestContext,
+  auth: Auth,
+  teamId: string,
+  userId: string,
+  role: string,
+) {
+  const response = await request.post(`/api/teams/${teamId}/users`, {
+    headers: authHeaders(auth),
+    data: { userId, role },
   });
 
   expect(response.status()).toBe(200);
@@ -92,6 +123,8 @@ export async function addUser(
   });
 
   expect(response.status()).toBe(200);
+
+  return await response.json();
 }
 
 export async function deleteUser(request: APIRequestContext, auth: Auth, userId: string) {
@@ -109,6 +142,8 @@ export async function addTeam(request: APIRequestContext, auth: Auth, name: stri
   });
 
   expect(response.status()).toBe(200);
+
+  return await response.json();
 }
 
 export async function deleteTeam(request: APIRequestContext, auth: Auth, teamId: string) {
