@@ -49,7 +49,7 @@ param(
   # 使用モデル。省略時は experiment.json の agents.<agent>.model。
   [string]$Model,
   # 無人実行: すべてのツールを自動許可（Bashやテスト実行も許可）。検証用の隔離worktreeで使う想定。
-  [switch]$Unattended = true
+  [switch]$Unattended = "true"
 )
 
 $ErrorActionPreference = "Stop"
