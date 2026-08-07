@@ -5,6 +5,9 @@ import { LinkButton } from '@/components/common/LinkButton';
 import { SortableLabel } from '@/components/common/SortableLabel';
 import { useMessages, useNavigation } from '@/components/hooks';
 import { SquarePen } from '@/components/icons';
+import { truncateString } from '@/lib/format';
+
+const NOTES_MAX_LENGTH = 40;
 
 export interface WebsitesTableProps extends DataTableProps {
   showActions?: boolean;
@@ -23,6 +26,19 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
         {renderLink}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
+      <DataColumn
+        id="notes"
+        label={t(labels.notes)}
+        width="240px"
+        style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}
+      >
+        {(row: any) =>
+          row.notes
+            ? truncateString(row.notes, NOTES_MAX_LENGTH) +
+              (row.notes.length > NOTES_MAX_LENGTH ? '…' : '')
+            : null
+        }
+      </DataColumn>
       <DataColumn
         id="created"
         label={
