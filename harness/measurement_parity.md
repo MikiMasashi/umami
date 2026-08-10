@@ -143,6 +143,8 @@ JSONL で書き出される。**`invoke_agent` スパン1件がセッション�
 | `session_id` | セッション追跡子 | `result.session_id` | `result.sessionId` | ◆ |
 | `agent_version` | CLI バージョン | `system/init.claude_code_version` | OTel `gen_ai.agent.version` | ◆ |
 | `model_requested` | CLI へ渡したモデル値 | `--model` の値 | 同左 | ★ |
+| `model_overridden` | `-Model` で experiment.json を上書きしたか | ハーネス | 同左 | ★ |
+| `harness_commit` / `harness_dirty` | 実行時の harness+skills の SHA / 未コミット改変の有無 | ハーネス | 同左 | ★ |
 | `permission` | 権限モード（`edit`/`all`） | ハーネス | 同左 | ★ |
 | `ts` / `story` / `variant` / `phase` | 分類キー | ハーネス | 同左 | ★ |
 

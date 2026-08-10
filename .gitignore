@@ -39,7 +39,13 @@ pm2.yml
 tmpclaude*
 CLAUDE.md
 nul
+
+# オーケストレーターの実行時状態（サンプルごと・worktreeローカル）
 .harness/
+# 全サンプルの計測データ集約先（メインリポジトリ側・worktreeの寿命から独立）
+# 分析確定時に experiments/<story>/ へコピーしてコミットする（生データ自体が成果物のため）
+.harness-data/
+
 
 # debug
 npm-debug.log*

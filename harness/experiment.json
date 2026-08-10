@@ -2,8 +2,8 @@
   "agent": "claude",
   "agents": {
     "claude": {
-      "model": "sonnet",
-      "expectModel": null,
+      "model": "claude-sonnet-4-6",
+      "expectModel": "claude-sonnet-4-6",
       "maxTurns": null
     },
     "copilot": {
@@ -12,5 +12,5 @@
       "maxAiCredits": null
     }
   },
-  "note": "実験条件。10サンプル取得中は変更禁止（変更したらサンプル取得をやり直すこと）。model は CLI へ渡す値、expectModel は実行時に解決されたモデルIDの期待値（不一致ならフェーズを失敗させる）。model=null はエージェント既定に従う。"
+  "note": "実験条件。10サンプル取得中は変更禁止（変更したらサンプル取得をやり直すこと）。model は CLI へ渡す値（エイリアスではなく解決済みIDを書くこと。sonnet 等は解決先が日をまたいで変わり得る）、expectModel は実行時に解決されたモデルIDの期待値（不一致ならフェーズを失敗させる）。model=null はエージェント既定に従う。解決済みIDの調べ方は harness/README.md「モデルの固定」を参照。"
 }

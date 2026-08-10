@@ -23,6 +23,11 @@
 - **サンプルは git worktree で隔離**（`Start-Sample.ps1`）→ 相互汚染なく10サンプル取得。
 - 各フェーズの実行時間・ターン数・ツール呼び出し数・トークン量・コストを
   `.harness/metrics.jsonl` に自動記録 → 成果③（ばらつき検証）の計測土台。
+- **人手レビュー時間は GitHub のサーバ打刻で計測**（`-Review` が作るPENDINGレビューの
+  `createdAt` → Submit の `submittedAt`）。レビュー対象数・指摘件数と併せて
+  `.harness/reviews.jsonl` に1ラウンド1行で記録 → 成果①の計測土台。
+- **計測データはメインリポジトリ側の `.harness-data/` へ集約**（worktree ローカルと二重書き）
+  → **worktree を消してもデータは残る**。全行が `sample` 列を持つので10サンプルをそのままマージできる。
 
 ## ディレクトリ
 ```
@@ -42,6 +47,13 @@ stories/US-001/
   brief.md                      # 生の要望（人手）
   acceptance-criteria.md        # 受入条件＝網羅度の基準（人手・固定）
   injected-defects.md           # 注入欠陥＝欠陥検出率の基準（人手・実装後に仕込む）
+
+<メインリポジトリ>/
+  .harness/                     # 実行時状態（そのworktree専用・デバッグ用の控え）
+  .harness-data/                # ★全サンプルの計測データ集約先（gitignore・worktreeの寿命から独立）
+    metrics.jsonl               #   全サンプルのフェーズ行
+    reviews.jsonl               #   全サンプルのレビューラウンド行
+    state/<sample>.json         #   各サンプルの state.json スナップショット
 ```
 
 ## プロジェクト定義（`project.json`）
@@ -111,8 +123,8 @@ stories/US-001/
 {
   "agent": "claude",
   "agents": {
-    "claude":  { "model": "sonnet",           "expectModel": null, "maxTurns": null },
-    "copilot": { "model": null,               "expectModel": null, "maxAiCredits": null }
+    "claude":  { "model": "claude-sonnet-4-6", "expectModel": "claude-sonnet-4-6", "maxTurns": null },
+    "copilot": { "model": "claude-sonnet-5",   "expectModel": null,                "maxAiCredits": null }
   }
 }
 ```
@@ -120,9 +132,30 @@ stories/US-001/
 | キー | 意味 |
 |------|------|
 | `agent` | 既定の実行エージェント（`claude` / `copilot`）。`-Agent` で上書きできる |
-| `agents.<name>.model` | CLI の `--model` へ渡す値。`null` ならエージェント既定に従う |
+| `agents.<name>.model` | CLI の `--model` へ渡す値。**エイリアスではなく解決済みIDを書く**（下記）。`null` ならエージェント既定に従う |
 | `agents.<name>.expectModel` | 実行時に解決されたモデルIDの**期待値**。不一致ならそのフェーズを失敗させる（比較が壊れたまま走り切るのを防ぐ） |
 | `agents.claude.maxTurns` / `agents.copilot.maxAiCredits` | 暴走時の上限（任意） |
+
+### モデルの固定
+
+`sonnet` のようなエイリアスは**解決先が日をまたいで変わり得る**。10サンプルを数日かけて取ると
+途中でモデル実体が入れ替わり、変種間の比較が静かに壊れる。そのため次の3点セットで扱う。
+
+1. **固定** — `model` に解決済みIDを書く。値は次のコマンドの `system/init` イベントの `model` から取る:
+   ```bash
+   echo hi | claude -p --output-format stream-json --verbose --model sonnet | head -1
+   ```
+2. **記録** — 実行時に解決された実体を毎フェーズ `metrics.jsonl` の `model` に残す
+   （CLI へ渡した値は `model_requested`）。
+3. **検証** — `expectModel` と実体が食い違ったらそのフェーズを**失敗させる**。
+
+`-Model` でコマンドラインから上書きした場合は検証を行わず、`model_overridden=true` を立てて実行する
+（意図的な逸脱として記録される）。**この行は本番サンプルの分布に混ぜないこと。**
+
+モデルに加えて、実行時の **CLIバージョン（`agent_version`）と ハーネスのSHA（`harness_commit`）** も
+毎行に残る。「モデルは同じなのにCLIが上がって挙動が変わった」「プロンプトを触った」を
+後から切り分けられるようにするため。`harness/**` や `.claude/skills/**` に未コミットの改変がある実行は
+`harness_dirty=true` になる（＝`harness_commit` が実際に走った内容を指していない印）。
 
 エージェントの指定:
 ```powershell
@@ -143,14 +176,51 @@ powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -
 > どの指標がエージェント差の影響を受け、それをどう吸収しているかは
 > [measurement_parity.md](measurement_parity.md) に整理してある。
 
-## 計測される項目（`.harness/metrics.jsonl`・1フェーズ1行）
+## 計測データの保存先（`.harness-data/`）
+
+`.harness/` は **gitignore かつ worktree ローカル**なので、`git worktree remove` した瞬間に
+そのサンプルの計測値が消える。10サンプルを取り切る前に1本でも消せば取り直しになるため、
+**メインリポジトリ側の `.harness-data/` へ二重書き**してデータの寿命を worktree から切り離す。
+
+| 出力先 | 用途 |
+|--------|------|
+| `<worktree>/.harness/metrics.jsonl` `reviews.jsonl` `state.json` | サンプル単体のデバッグ用（従来どおり） |
+| `<main>/.harness-data/metrics.jsonl` | **全サンプル追記。worktree を消しても残る** |
+| `<main>/.harness-data/reviews.jsonl` | 同上（レビューラウンド） |
+| `<main>/.harness-data/state/<sample>.json` | `state.json` のスナップショット（保存のたび上書き） |
+
+- 保存先は `git rev-parse --git-common-dir` から解決する（worktree 内から実行しても
+  **メインリポジトリの `.git` を指す**）。`-Status` で実際のパスを確認できる。
+- 環境変数 **`HARNESS_DATA_DIR`** を設定すると保存先を差し替えられる（別ドライブへ逃がす場合など）。
+- 追記のみなので並列実行でも壊れにくい（短いリトライ付き）。ただし `-Rollback` の
+  `rolled_back` タグ付けだけは全文の書き換えになるため、並列実行に踏み切る場合は排他が必要。
+- **`-Rollback` は中央側にも同じタグを付ける**（対象は自サンプルの行のみ）。付け忘れると
+  本番データ側だけ破棄済みの試行が生き残り、集計が二重計上になる。
+- 分析が確定したら `experiments/<story>/metrics.jsonl` としてメインリポジトリへ**コミット**する。
+  修了制作の生データはそれ自体が成果物であり、バックアップと監査証跡を兼ねる。
+
+### サンプルID（`sample`）
+
+`story` + `variant` だけでは**同一 variant の10サンプルをマージした行を区別できない**。
+そこで `Start-Sample.ps1` が確定した `<variant>-<agent>-<N>`（例 `existing-claude-3`）を
+`-Init` 時に `state.json` へ保存し、`metrics.jsonl` / `reviews.jsonl` の**全行**に載せる。
+
+- `Invoke-Process.ps1` を直接 `-Init` した場合はブランチ名 `sample/<story>/<sample>` から導出する。
+  それも取れない場合は `null` になり、警告が出る（本番サンプルでは `Start-Sample.ps1` から開始すること）。
+- サンプル開始後に `-Sample` で別のIDを渡すと**エラーで停止**する（記録が2つのIDへ割れるため）。
+- 本機能の導入前に取った `US-SAMPLE01` のデータは `sample` も `model` も持たない。
+  **本番データに混ぜず、パイロットとして別ファイルに退避すること。**
+
+## 計測される項目（`.harness/metrics.jsonl` と `.harness-data/metrics.jsonl`・1フェーズ1行）
 
 **エージェントによらず同じ列・同じ定義**で記録される。主指標はハーネス自身が測り、
 エージェントの申告値は `agent_*` / `api_*` に併記して突合用にとどめる。
 
 | 列 | 意味 |
 |----|------|
-| `agent` / `agent_version` / `model` / `model_requested` / `permission` | 実験条件の来歴 |
+| `agent` / `agent_version` / `model` / `model_requested` / `permission` | 実験条件の来歴（`agent_version` = 実行時のCLIバージョン） |
+| `model_overridden` | `-Model` で `experiment.json` を上書きした実行（`true` の行は本番の分布から除外する） |
+| `harness_commit` / `harness_dirty` | 実行時の `harness/` + `.claude/skills/` の SHA と、未コミット改変の有無 |
 | `duration_ms` | **フェーズ実行時間（主指標）**。ハーネスのストップウォッチ |
 | `agent_duration_ms` / `api_duration_ms` | エージェント申告の実行時間・API時間（参考） |
 | `num_turns` / `tool_calls` | **LLM往復回数・ツール呼び出し回数**。ストリームイベントから自前計数 |
@@ -159,6 +229,7 @@ powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -
 | `cost_native` / `cost_unit` | 課金の生値と単位（Claude=`usd` / Copilot=`aiu`）。**通貨が違うので換算しない** |
 | `premium_requests` | Copilot のみ。粒度が粗いのでコスト指標には使わない |
 | `is_error` / `session_id` / `ts` / `story` / `variant` / `phase` | 実行の成否・追跡・分類キー |
+| `sample` | **サンプルID**（`existing-claude-3`）。同一 variant の10サンプルを区別する集計キー |
 | `rolled_back` | `-Rollback` で破棄した試行に付くフラグ（集計時に除外する） |
 
 > **エージェントをまたいでコストを比較するときはトークン量を使う**こと。
@@ -194,9 +265,16 @@ powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -
 
 # 表示されたworktreeに入り、PRをレビューしたら次フェーズへ
 cd ..\KeihiSeisan-sample-existing-claude-1
+powershell -File harness/Invoke-Process.ps1 -Review     # ← 必ずこれでPRを開く（レビュー時間の開始打刻）
+#   …レビュー後、GitHub上で「Submit review」（指摘ゼロでも必ず提出）…
 powershell -File harness/Invoke-Process.ps1 -Revise     # ← PRに指摘を残したら反映（何度でも可）
 powershell -File harness/Invoke-Process.ps1 -Continue   # ← レビューOKなら次フェーズへ（ゲートごとに繰り返す）
-powershell -File harness/Invoke-Process.ps1 -Status     # 進捗確認
+powershell -File harness/Invoke-Process.ps1 -Status     # 進捗確認（計測データの保存先も表示される）
+```
+
+サンプルを取り終えたら worktree は削除してよい（計測データは `<main>/.harness-data/` に残る）。
+```powershell
+git worktree remove ..\KeihiSeisan-sample-existing-claude-1 --force
 ```
 
 ### ベースライン条件で1サンプルを回す
@@ -205,7 +283,13 @@ powershell -File harness/Invoke-Process.ps1 -Status     # 進捗確認
 powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant baseline
 
 # 最終成果物のPRを人が確認する（レビュー時間の計測はここだけ）
+powershell -File harness/Invoke-Process.ps1 -Review     # 開始打刻 → ブラウザでPRを開く
+#   …GitHub上で「Submit review」…
+powershell -File harness/Invoke-Process.ps1 -Continue   # ← 最後のラウンドを閉じて reviews.jsonl へ記録
 ```
+> baseline は**唯一のゲートが最終フェーズ**（`done` になる）。この `-Continue` は次フェーズへ
+> 進む操作ではなく「最終レビューを記録する」操作。叩かないと**比較対象群のレビュー時間だけが
+> 丸ごと欠測**するので必ず実行すること（`existing` の最終フェーズ `e2e-run` も同じ）。
 テスト実行等を自動許可して無人で流す場合は `-Unattended` を付ける（隔離worktree前提）。
 
 ### 計測の注意: 依存インストールはフェーズの外で済ませる
@@ -235,6 +319,56 @@ worktree には `node_modules` が無いため、**フェーズを回す前に�
 - 追加した場合は成果物（`implementation-notes-<STORY>.md` / `e2e-<STORY>.md`）に理由を記録させる。
   追加の**有無自体**は lockfile の差分でも判別できるので、集計時は
   「依存追加が起きたサンプル」をフラグとして扱える。
+
+### レビュー（人手レビュー時間の計測）
+
+**PRは必ず `-Review` で開くこと。** GitHub の通知やブラウザの履歴から直接開くと、レビュー時間が
+欠測または過小評価になる。
+
+```powershell
+powershell -File harness/Invoke-Process.ps1 -Review    # PENDINGレビューを作成 → ブラウザでPRを開く
+# …レビューする…
+# GitHub上で「Submit review」（自分のPRなので Approve / Request changes は選べない。Comment で提出）
+powershell -File harness/Invoke-Process.ps1 -Continue  # または -Revise
+```
+
+**なぜこうするのか**: 壁時計時間（ゲート開閉の差分や `-Continue` を叩いた時刻）は
+「実験者がいつPCの前に座ったか」であってレビュー時間ではない（実サンプルにはゲートが6日間
+開きっぱなしの例がある）。`-Review` は**空のPENDINGレビューをGitHubに作る**ので、その瞬間が
+サーバ側で `createdAt` として打刻され、Submit の `submittedAt` と合わせて
+**両端がGitHubのサーバ時計**になる。自己申告値ではないので、修了制作の証拠として強い。
+
+- **指摘ゼロでも計測できる**（開始打刻がコメントに依存しないため）。ダミーコメントは書かないこと。
+- **読み込み時間が計測に入る**（読み始める前に打刻するため）。`read_ms` として別記される。
+- `-Review` は**冪等**。同じラウンドで何度叩いても既存のPENDINGを再利用し、開始打刻を上書きしない。
+- **Submit し忘れると `-Continue` / `-Revise` が警告して停止する**（終端が打刻されずラウンドが
+  閉じないため）。指摘ゼロの回もこのガードで Submit を強制できる。
+- 離席は検知できない。`-Review` の後に中断すると数値が膨らむ。PENDINGは作り直すと下書きが
+  消えるため測り直しもできないので、**中断しない**運用と集計時の外れ値チェック（例: 60分超）で対処する。
+
+計測結果は `.harness/reviews.jsonl` と `.harness-data/reviews.jsonl` に
+**1レビューラウンド＝1行**で追記される。
+
+| 列 | 意味 |
+|----|------|
+| `review_ms` | **実レビュー時間（主指標）**。`review_opened_at`（PENDING作成）→ `submitted_at` |
+| `read_ms` | 参考: 読み込み時間。`review_opened_at` → `first_comment_at` |
+| `write_ms` | 参考: 指摘を書いていた時間（旧定義）。`first_comment_at` → `submitted_at`。感度分析用 |
+| `latency_ms` | 参考: 承認ラグ。`gate_opened_at`（ハーネス側・ローカル時刻）→ `submitted_at` |
+| `outcome` | `continue`（合格）/ `revise`（差し戻し）/ `skip`（提案プロセスの省略・未実装） |
+| `review_time_source` | 開始打刻の由来。`pending-review`（正常）/ `first-comment`（`-Review` 忘れ・過小評価）/ `missing`（欠測＝`review_ms` は `null`）/ `skipped` |
+| `comments` | 人間の指摘件数。**ハーネスの自動返信（`replyTo` 付き）は除外済み** |
+| `diff_files` / `diff_added` / `diff_deleted` | レビュー対象数。フェーズのベースSHA→HEAD の `git diff --numstat` |
+| `round` | ゲート内のラウンド番号。`-Revise` ごとに 1,2,3… と増える（フェーズが変われば1に戻る） |
+| `pr` / `review_id` / `review_state` | 突合用の生値（`review_state` は自分のPRだと常に `COMMENTED`） |
+| `story` / `variant` / `sample` / `phase` | 分類キー（`sample` の詳細は「計測データの保存先」参照） |
+| `rolled_back` | `-Rollback` で破棄したラウンドに付く（**削除はしない**。集計時に除外する） |
+
+> `outcome` は `review.state` からは決まらない。**GitHub は自分のPRを Approve / Request changes
+> できない**ため常に `COMMENTED` になる。実験者が叩いたコマンド（`-Continue` / `-Revise`）で決める。
+
+> 欠測は**必ず `null`** で残す（0分や6日に化けさせない）。`missing` の行は集計から除外し、
+> `first-comment` の行は「過小評価」として区別して扱うこと。
 
 ### レビュー指摘の反映（修正フェーズ）
 各ゲート（`awaiting-review`）では、次の2つの経路がある。
@@ -286,7 +420,8 @@ powershell -File harness/Invoke-Process.ps1 -Rollback -ToPhase 3             # �
 ### 実験者が手で行うステップ（自動化しない）
 - **受入条件の定義**（`acceptance-criteria.md`）: 網羅度の基準。フェーズ開始前に確定。
 - **欠陥注入**（`injected-defects.md`）: 実装フェーズ完了・ゲート停止後、レビュー前に手で仕込む。
-- **レビュー判定と時間計測**: 各ゲートのPRで実施。レビュー時間・対象数を記録（成果①）。
+- **レビュー判定**: 各ゲートのPRで実施。手順は `-Review` → GitHubで Submit review → `-Continue`/`-Revise`
+  の3ステップに固定（レビュー時間・対象数・指摘件数の記録は自動）。
 
 ### 無人で一気通貫（ゲート停止を挟まず流したい検証時）
 `-Unattended` で `--permission-mode bypassPermissions`（Bash/テスト実行も自動許可）。
@@ -302,4 +437,5 @@ powershell -File harness/Invoke-Process.ps1 -Rollback -ToPhase 3             # �
   ＝同一プロセスであることを担保する。試行例は `修了制作/harness-trials/` を参照。
 - **CI化（案D）**: 各フェーズを GitHub Actions のジョブに割り、PR承認をゲートに昇格。
   プロンプトとフェーズ定義はそのまま資産として流用可能。
-- **計測強化（案E）**: `metrics.jsonl` にレビュー時間・網羅度・欠陥検出を統合し集計。
+- **計測強化（案E）**: レビュー時間・レビュー対象数は `reviews.jsonl` として実装済み。
+  残りは網羅度・欠陥検出の統合と、`metrics.jsonl` + `reviews.jsonl` を読む集計スクリプト。

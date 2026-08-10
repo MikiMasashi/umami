@@ -119,10 +119,16 @@ try {
     Invoke-Setup (Join-Path $wtPath "harness/project.json") $wtPath
   }
 
-  $psArgs = @("-NoProfile", "-File", "harness/Invoke-Process.ps1", "-Story", $Story, "-Variant", $Variant, "-Agent", $Agent, "-Init")
+  # サンプルIDは worktree 側で導出させず、ここで確定した値を渡す（改善計画 #13）。
+  # ブランチ名からの導出はフォールバックであり、ブランチを切り直すとIDが変わってしまうため。
+  $psArgs = @("-NoProfile", "-File", "harness/Invoke-Process.ps1", "-Story", $Story, "-Variant", $Variant,
+              "-Agent", $Agent, "-Sample", $sample, "-SampleIndex", $N, "-Init")
   if ($Model)      { $psArgs += @("-Model", $Model) }
   if ($Unattended) { $psArgs += "-Unattended" }
   & powershell @psArgs
   Write-Host "`nサンプル $sample のworktree: $wtPath" -ForegroundColor Green
   Write-Host "継続する場合: cd `"$wtPath`"; powershell -File harness/Invoke-Process.ps1 -Continue" -ForegroundColor Green
+  # 計測データは worktree ではなくメインリポジトリ側に集約される（worktree を消しても残る）。
+  $dataDir = if ($env:HARNESS_DATA_DIR) { $env:HARNESS_DATA_DIR } else { Join-Path $RepoRoot ".harness-data" }
+  Write-Host "計測データの保存先: $dataDir （metrics.jsonl / reviews.jsonl / state/$sample.json）" -ForegroundColor Green
 } finally { Pop-Location }
