@@ -1,6 +1,6 @@
 {
   "name": "KeihiSeisan",
-  "setup": ["npm ci"],
+  "setup": ["pnpm install"],
   "docs": {
     "requirements": "docs/requirements",
     "specifications": "docs/specifications",
@@ -11,8 +11,8 @@
     "reviewResponses": "docs/reviews"
   },
   "source": {
-    "impl": ["apps/api", "apps/web"],
-    "unitTests": ["apps/api/test", "apps/web/test"],
+    "impl": ["src", "aprisma"],
+    "unitTests": ["src/tests"],
     "e2eTests": "tests/e2e"
   }
 }
