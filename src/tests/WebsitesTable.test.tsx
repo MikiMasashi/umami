@@ -70,5 +70,5 @@ test('truncates a long notes value', () => {
   const longNoteText = screen.getByText(/^a+…$/);
 
   expect(longNoteText).toBeInTheDocument();
-  expect(longNoteText.textContent?.length).toBeLessThan(200);
+  expect(longNoteText.textContent?.length).toBe(81);
 });
