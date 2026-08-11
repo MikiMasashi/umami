@@ -29,12 +29,15 @@
 | ⚙️ | **手動運用**（仕組み上は人が記録する前提。自動計測なし） |
 | 🔴 | **未実装**（計測手段・対象プロセスがまだ無い） |
 
-> ハーネスが現在自動で持つ生データは2本。
+> ハーネスが現在自動で持つ生データは3本。
 > **`metrics.jsonl`**（フェーズ実行ごと1行: 実験条件の来歴・実行時間・ターン数・
-> ツール呼び出し数・トークン量・コスト）と **`reviews.jsonl`**（レビューラウンドごと1行:
-> レビュー時間・レビュー対象数・指摘件数）。どちらも巻き戻し時は `rolled_back=true` が付く。
-> 集計・統計・網羅度・欠陥検出などの上位指標を出すスクリプトは現時点で存在しない
-> （`Invoke-Process.ps1` が生ログを吐くところまで）。
+> ツール呼び出し数・トークン量・コスト）、**`reviews.jsonl`**（レビューラウンドごと1行:
+> レビュー時間・レビュー対象数・指摘件数・レビュー省略率）、**`acceptance.jsonl`**
+> （サンプルごと1行: 受入条件の分母・充足数・充足率）。いずれも巻き戻し時は `rolled_back=true` が付く。
+>
+> 集計は **`Export-Results.ps1`** が担当し、`done` のたびに `results.csv`
+> （`model` / `process` / 工程別レビュー時間×5 / `acceptance_rate` の8カラム）を全サンプルから
+> 再生成する。統計値（SD/CV）・欠陥検出などの上位指標を出すスクリプトはまだ無い。
 >
 > **保存先**: worktree ローカルの `.harness/` と、メインリポジトリ側の **`.harness-data/`** への
 > 二重書き。集計に使うのは後者（worktree を削除しても残る）。全行が `sample`（サンプルID）を
@@ -66,7 +69,7 @@
 
 | 観点 | 指標名 | 定義（PPT） | 出典 | 実装 | 測定範囲（どこから→どこまで／ユーザー目線） |
 |------|--------|-------------|------|:---:|-----------------------------------------------|
-| 機能的正しさ | ★ 受入条件充足率 | 合格AC ÷ 全AC・E2Eで判定 | SWE-bench | 🔴 | 分母の受入条件は `stories/US-001/acceptance-criteria.md` に**枠はあるが未記入（AC-1〜3 が「（未記入）」）**。E2Eでの合否判定・充足率の自動算出は未実装。 |
+| 機能的正しさ | ★ 受入条件充足率 | 合格AC ÷ 全AC・E2Eで判定 | SWE-bench | ✅ | `done` への遷移時に自動計測（`Acceptance.ps1`）。**分母**＝ハーネスが `stories/<STORY>/acceptance-criteria.md` をパースして数えた AC 件数、**分子**＝`acceptance-verifier` Skill が **Playwright MCP で実機操作**して判定した `verdict=satisfied` の件数をハーネスが数え直した値。AIの申告した件数・率は使わない。判定行の欠落・未知verdict・AC外IDは分子に入らず、件数だけ品質シグナルとして残す。`.harness-data/acceptance.jsonl` の `rate`（欠測は `null`）と `results.csv` の `acceptance_rate` に記録。⚠️ **分母の AC はまだ未記入**（`AC-1〜3` が「（未記入）」）＝計測基盤は完成したが基準の確定が残っている。 |
 | テスト自身の質 | Mutation Score | テストが欠陥を検出できるか | Papadakis+ ICSE2018 | 🔴 | ミューテーションテスト実行基盤・計測ともに未実装。 |
 | 欠陥検出 | 工程内封じ込め率(PCE) | 上流検出の割合・PRに検出工程を付与 | DRE / Capers Jones | ⚙️/🔴 | `stories/US-001/injected-defects.md` に「実際に検出された工程」欄はあるが**未記入・手動運用前提**。PRへ検出工程を付与する自動化・PCE算出は未実装。※P15で「仕込み欠陥検出率は**不採用**」とある一方、注入欠陥ファイルは残存＝設計と実装に**不整合**（要確認）。 |
 | デグレ | 回帰テスト合格率 | 既存テストの合格率・回帰修正回数 | SWE-bench pass-to-pass | 🔴 | 回帰テストスイートの合否収集・修正回数カウントは未実装。 |
@@ -82,7 +85,7 @@
 | 観点 | 指標名 | 定義（PPT） | 出典 | 実装 | 測定範囲（どこから→どこまで／ユーザー目線） |
 |------|--------|-------------|------|:---:|-----------------------------------------------|
 | 時間ベース | ★ 人時比率 | 人的工数 ÷ 総リードタイム。自動化率＝1−人時比率（人的工数は①効率の値を用いる） | approval-gate latency | 🟡 | 分子の人的工数は`reviews.jsonl`の`review_ms`合算＋`-revise`行の`duration_ms`から、分母の総リードタイムは`duration_ms`合算から導出可能になった。比の算出スクリプトは未実装。 |
-| レビュー省略 | ★ コードレビュー省略率 | テスト合格で省略できた対象 ÷ 全対象。提案プロセスの核 | arXiv:2402.13521 | 🔴 | 「テスト合格でレビューを省略する」**提案プロセス（proposed）自体が未実装**（現状は existing / baseline のみ）。省略対象のカウント手段が無く測定不可。 |
+| レビュー省略 | ★ コードレビュー省略率 | テスト合格で省略できた対象 ÷ 全対象。提案プロセスの核 | arXiv:2402.13521 | 🟡 | 提案プロセス（`processes/proposed.json` + `prompts/proposed/*.md`）を実装済み。定義は **`scope_skipped_added ÷ scope_total_added`**（規模ベース・主／対象数ベースは `scope_skipped_files ÷ scope_total_files`）。分母は `git diff` の実測、分子は③が出力する `review-scope-<STORY>.json` の `skip` 申告で、`reviews.jsonl` の `scope_*` 列に記録される。**未記載ファイルは保守的に `review` 扱い**（`scope_unlisted_files` で件数を残す）。ただし**比の算出スクリプトは未実装**。 |
 | 自律完遂 | ゲート一発通過率 | 差し戻しゼロで承認された割合（state.json） | HITL_Necessity_Rate | 🟡 | 各フェーズで`-revise`が0のまま`-Continue`された割合＝一発通過。生データ（`-revise`行の有無）から導出可能だが、判定・集計は未実装。 |
 
 > P16補足: 「**コードレビュー省略率 × 残存欠陥・デグレ**」のペアが提案プロセスの成否を直接示す（＝核心の問い）。
@@ -107,6 +110,22 @@
 | `is_error` / `session_id` / `ts` / `story` / `variant` | 実行の成否・追跡・条件識別 | 各フェーズ実行時 | 集計時の分類キー |
 | `sample` | サンプルID（`existing-claude-3`） | `-Init` 時に確定・全行に付与 | **同一 variant の10サンプルを区別する集計キー**（②③はこれが無いと成立しない） |
 
+`acceptance.jsonl` へは**1サンプルにつき1行**追記される（`done` への遷移時に自動計測）。
+
+| フィールド | 何を測っているか | 測定の開始点 → 終了点 | 対応する設計指標 |
+|-----------|------------------|------------------------|-------------------|
+| `total` / `satisfied` | **受入条件充足率の分母・分子**。どちらもハーネスが数えた値（AIの申告は使わない） | `acceptance-criteria.md` のパース ＋ 実機判定JSONの突き合わせ | **受入条件充足率（②）** |
+| `rate` | **受入条件充足率** = `satisfied / total`。欠測は `null` | 同上 | 同上。`results.csv` の `acceptance_rate` の元 |
+| `not_satisfied` / `blocked` | 未充足 / 実機で判定に到達できなかった件数 | 各ACの実機確認 | 品質の内訳（②） |
+| `unreported` / `invalid_verdict` / `extra_reported` | 判定行の欠落 / 未知の verdict / AC一覧に無いIDの申告 | — | **データ品質のシグナル**。いずれも分子に入らない |
+| `placeholder_criteria` | 「（未記入）」のまま残っている AC 件数 | — | 分母の妥当性のシグナル（分母からは外さない） |
+| `impl_touched` / `impl_touched_files` | 計測工程が `docs/acceptance` 以外を変更した件数とパス | 検証実行前HEAD → 検証後HEAD の `git diff` 実測 | **検証の妥当性のシグナル**。0でないサンプルは「実装を直してから測った」疑いがあり要確認 |
+| `source` | 記録の由来（`acceptance-result` / `missing`） | — | `missing` の行は充足率を欠測として除外する |
+
+> AC 1件ごとの判定（条件文・期待・実際・証跡）は `.harness-data/acceptance/<sample>.json` と
+> `acceptance-details.csv` に残る。CSV の主表に入るのは**数だけ**なので、報告書で個別の根拠を
+> 示すときはこちらを参照する。
+
 `reviews.jsonl` へは**1レビューラウンドごとに1行**追記される（ゲートを `-Continue` /
 `-Revise` で閉じた時点）。列の一覧は [harness/README.md](README.md) の「レビュー（人手レビュー時間の計測）」を参照。
 
@@ -118,7 +137,11 @@
 | `comments` | 人間の指摘件数（自動返信を除外） | 当該ラウンドのレビュー | 指摘密度（①）の分子 |
 | `diff_files` / `diff_added` / `diff_deleted` | レビュー対象の規模 | フェーズのベースSHA → HEAD | レビュー対象数（①） |
 | `outcome` / `round` | 合格か差し戻しか・ラウンド番号 | ラウンドを閉じたコマンド | 差し戻し回数（①）、ゲート一発通過率（③） |
-| `review_time_source` | 計測の由来（`pending-review` / `first-comment` / `missing` / `skipped`） | — | **欠測（`missing`）と省略（`skipped`）を混同しないための識別子**。③レビュー省略率の分子は `skipped` |
+| `review_time_source` | 計測の由来（`pending-review` / `first-comment` / `missing`） | — | 欠測（`missing`）を過小評価（`first-comment`）や正常値と混同しないための識別子 |
+| `scope_total_added` / `scope_skipped_added` | **コードレビュー省略率の分母・分子（規模ベース・主）** | フェーズのベースSHA → HEAD の `git diff` 実測 ＋ `review-scope-<STORY>.json` の `skip` 申告 | **コードレビュー省略率（③）**。`reviewScope: true` のフェーズのゲートのみ記録（他は `null`） |
+| `scope_total_files` / `scope_skipped_files` | 同・対象数ベース（従） | 同上 | コードレビュー省略率（③）の副定義 |
+| `scope_source` / `scope_unlisted_files` | 記録の由来（`review-scope` / `missing` / `none`）と、JSON未記載の変更ファイル数 | — | `missing` の行は省略率を欠測として除外。`scope_unlisted_files > 0` の行は**データ品質の要確認**（保守的に `review` として集計済み） |
+| `scope_reviewed_tests_changed` / `scope_reviewed_tests` | 実装フェーズが**レビュー済みテスト**（`source.e2eTests` / `source.componentTests` 配下）へ出した差分の件数とパス | フェーズのベースSHA → HEAD の `git diff` 実測 | **検証の妥当性のシグナル**。0でない試行は「レビュー済みテストが実装を担保する」という前提が崩れているため、集計時に区別して扱う（省略率が欠測でも独立に記録される） |
 | `rolled_back` | 巻き戻し済みラウンドの除外フラグ | `-Rollback`時に該当行へ付与 | 集計時に最終試行だけを数えるため |
 
 > `agent_duration_ms` / `api_duration_ms` / `agent_num_turns` は**エージェントの申告値**であり、
@@ -138,8 +161,14 @@
   集計時は必ずこの列で層別すること。
 - 「総リードタイム」「手戻り回数」「ゲート一発通過率」「標準偏差」は
   **生データはあるが集計スクリプトが未実装**（🟡）。集計器を1本足せば発表用の値になる状態。
-- 品質系（受入条件充足率・Mutation・PCE・回帰・保守性）と③のレビュー省略率は
-  **計測基盤そのものが未整備**（🔴）。特にコードレビュー省略率は**提案プロセス未実装**が前提ブロッカー。
+- 品質系のうち **受入条件充足率は計測実装済み**（✅）。残る Mutation・PCE・回帰・保守性は未整備（🔴）。
+- `metrics.jsonl` の `phase="acceptance-verify"` 行は**計測工程であってプロセスの一部ではない**。
+  リードタイム・生成AI利用料をプロセス間で比較するときは**この行を除外する**こと
+  （両プロセスに同一条件で付く工程なので、含めても差は出ないが分母が膨らむ）。
+- 受入検証は `processes/<variant>.json` のフェーズに含まれない。開発フェーズは全変種で
+  `acceptance-criteria.md` の閲覧を禁止しており、**その禁止を崩さずに基準へアクセスする**ために
+  プロセスの外側（`done` の瞬間）へ置いてある。MCP（Playwright）もこの工程にだけ渡すので、
+  **既存・提案プロセスの独立変数は増えていない**。
 
 ## 実装の優先度メモ（一指標ずつ着手する際の目安）
 

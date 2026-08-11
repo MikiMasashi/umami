@@ -1,0 +1,18 @@
+{
+  "_comment": "受入検証フェーズ専用のMCP定義。バージョンは実験条件なので固定する（@latest にすると10サンプル取得中にMCPの実体が入れ替わり、比較が静かに壊れる）。更新するときは project.json の verify.setup にある install-browser のバージョンも必ず揃えること。--browser chromium は必須（省略すると既定が実機の Google Chrome になり『Chromium distribution chrome is not found』で全ACが blocked になる）。--headless を外すとブラウザが画面に表示される。",
+  "mcpServers": {
+    "playwright": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@playwright/mcp@0.0.79",
+        "--browser", "chromium",
+        "--headless",
+        "--isolated",
+        "--viewport-size", "1280x900"
+      ]
+    }
+  }
+}

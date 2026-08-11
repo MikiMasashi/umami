@@ -1,6 +1,12 @@
 {
-  "name": "KeihiSeisan",
-  "setup": ["pnpm install"],
+  "name": "umami",
+  "setup": [
+    "pnpm install --frozen-lockfile",
+    "cmd /c copy /Y .env.example .env",
+    "pnpm run build-db-client",
+    "docker compose -f docker-compose.dev.yml up -d --wait",
+    "pnpm exec prisma migrate reset --force --skip-generate --skip-seed"
+  ],
   "docs": {
     "requirements": "docs/requirements",
     "specifications": "docs/specifications",
@@ -8,11 +14,30 @@
     "implementation": "docs/implementation",
     "e2e": "docs/e2e",
     "e2eResults": "docs/e2e/results",
-    "reviewResponses": "docs/reviews"
+    "componentTests": "docs/tests",
+    "reviewResponses": "docs/reviews",
+    "acceptance": "docs/acceptance"
   },
   "source": {
     "impl": ["src", "aprisma"],
     "unitTests": ["src/tests"],
+    "componentTests": ["src/component-tests"],
     "e2eTests": "tests/e2e"
+  },
+  "conventions": {
+    "testIdAttribute": "data-test"
+  },
+  "verify": {
+    "baseUrl": "http://localhost:3000",
+    "setup": [
+      "docker compose -f docker-compose.dev.yml up -d --wait",
+      "pnpm run build-db-client",
+      "pnpm run update-db",
+      "npx -y @playwright/mcp@0.0.79 install-browser chrome-for-testing"
+    ],
+    "servers": [
+      { "name": "web", "command": "pnpm dev", "url": "http://localhost:3000", "timeoutSec": 300 }
+    ],
+    "notes": "認証必須。ログインは http://localhost:3000/login に遷移し、ユーザー名 admin / パスワード umami を入力して送信する（01_init マイグレーションで投入される既定アカウント）。ログイン後は /dashboard へ遷移する。"
   }
 }

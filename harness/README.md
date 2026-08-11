@@ -2,7 +2,8 @@
 
 4つのSkill（requirements-analyst / backend-architect / frontend-engineer / test-engineer）を
 開発メンバーに見立て、**1つのユーザーストーリーを評価対象プロセス（変種）で実装**するための実行基盤。
-現在の実装済み変種: `existing`（既存プロセス）/ `baseline`（ベースライン・プロセス指定なし）。
+現在の実装済み変種: `existing`（既存プロセス）/ `proposed`（提案プロセス）/
+`baseline`（ベースライン・プロセス指定なし）。
 
 ## 設計方針
 - **プロセス変種ごとにスクリプト1本**（`Invoke-Process.ps1`）。工程は「フェーズ」として定義し、
@@ -36,16 +37,22 @@ harness/
   experiment.json               # 実験条件（既定エージェント・エージェント別モデル・上限）
   Agents.ps1                    # エージェント差分の吸収層（claude / copilot → 正規化レコード）
   processes/existing.json       # 既存プロセスのフェーズ定義（順序・使用skill・ゲート）
+  processes/proposed.json       # 提案プロセスのフェーズ定義（③に reviewScope: true）
   processes/baseline.json       # ベースライン（プロセス指定なし・一括実装）のフェーズ定義
   prompts/existing/*.md         # フェーズごとの固定プロンプト
+  prompts/proposed/*.md         # 提案プロセス用の固定プロンプト
   prompts/baseline/*.md         # ベースライン用の固定プロンプト（一括実装1本）
+  prompts/verify/*.md           # 計測工程の固定プロンプト（受入検証・全変種共通）
+  mcp/playwright.json           # 受入検証だけに渡すMCP定義（Playwright MCP）
   Invoke-Process.ps1            # ステートフル実行 + ゲート停止 + メトリクス収集
+  Acceptance.ps1                # 受入条件充足率の計測（done の瞬間に自動実行）
+  Export-Results.ps1            # 最終集計（results.csv の生成）
   Start-Sample.ps1              # worktree隔離ラッパ（サンプル開始）
   measurement_indicators.md     # 測定指標一覧（PPT P13〜P16 との対応）
   measurement_parity.md         # エージェント切替時の計測パリティ設計
 stories/US-001/
   brief.md                      # 生の要望（人手）
-  acceptance-criteria.md        # 受入条件＝網羅度の基準（人手・固定）
+  acceptance-criteria.md        # 受入条件＝充足率の基準（人手・固定）
   injected-defects.md           # 注入欠陥＝欠陥検出率の基準（人手・実装後に仕込む）
 
 <メインリポジトリ>/
@@ -53,7 +60,12 @@ stories/US-001/
   .harness-data/                # ★全サンプルの計測データ集約先（gitignore・worktreeの寿命から独立）
     metrics.jsonl               #   全サンプルのフェーズ行
     reviews.jsonl               #   全サンプルのレビューラウンド行
+    acceptance.jsonl            #   全サンプルの受入検証行（充足数・分母）
+    acceptance/<sample>.json    #   受入条件1件ごとの判定（証跡）
     state/<sample>.json         #   各サンプルの state.json スナップショット
+    results.csv                 # ★最終成果物（8カラム・発表の散布図用）
+    results-detail.csv          #   突合・監査用
+    acceptance-details.csv      #   受入条件1件ごとの判定（CSV版）
 ```
 
 ## プロジェクト定義（`project.json`）
@@ -71,12 +83,17 @@ stories/US-001/
     "implementation":  "docs/implementation",
     "e2e":             "docs/e2e",
     "e2eResults":      "docs/e2e/results",
+    "componentTests":  "docs/tests",
     "reviewResponses": "docs/reviews"
   },
+  "conventions": {
+    "testIdAttribute": "data-testid"
+  },
   "source": {
-    "impl":      ["apps/api", "apps/web"],
-    "unitTests": ["apps/api/test", "apps/web/test"],
-    "e2eTests":  "tests/e2e"
+    "impl":           ["apps/api", "apps/web"],
+    "unitTests":      ["apps/api/test", "apps/web/test"],
+    "componentTests": ["apps/api/test/component", "apps/web/test/component"],
+    "e2eTests":       "tests/e2e"
   }
 }
 ```
@@ -86,8 +103,14 @@ stories/US-001/
 
 **トークン名の規則**: `<セクション>_<キー>` を SNAKE_UPPER にしたもの。
 `docs.specReviews` → `{{DOCS_SPEC_REVIEWS}}` / `source.e2eTests` → `{{SOURCE_E2E_TESTS}}` /
+`conventions.testIdAttribute` → `{{CONVENTIONS_TEST_ID_ATTRIBUTE}}` /
 トップレベルの `name` のみ `{{PROJECT_NAME}}`。**キーを増やせばトークンも自動で増える**
 （スクリプトの変更は不要）。
+
+トークン化されるセクションは `docs` / `source` / `conventions` の3つ。
+**`docs` と `source` は必須、`conventions` は任意**（持たない `project.json` でも全フェーズ動く）。
+`verify` はトークン化されない（受入検証の起動設定であってプロンプトへ差し込む値ではないため。
+`baseUrl` だけはスクリプトが `{{BASE_URL}}` として明示的に渡している）。
 
 | トークン | 値（本リポジトリ） |
 |----------|--------------------|
@@ -97,14 +120,23 @@ stories/US-001/
 | `{{DOCS_SPEC_REVIEWS}}` | docs/specifications/reviews |
 | `{{DOCS_IMPLEMENTATION}}` | docs/implementation |
 | `{{DOCS_E2E}}` / `{{DOCS_E2E_RESULTS}}` | docs/e2e / docs/e2e/results |
-| `{{DOCS_REVIEW_RESPONSES}}` | docs/reviews（`-Revise` の回答ファイル置き場。スクリプトも同じ値を参照する） |
+| `{{DOCS_COMPONENT_TESTS}}` | docs/tests（提案プロセスのCT設計書・test-readiness の置き場） |
+| `{{DOCS_REVIEW_RESPONSES}}` | docs/reviews（`-Revise` の回答ファイルと `review-scope-<STORY>.json` の置き場。スクリプトも同じ値を参照する） |
 | `{{SOURCE_IMPL}}` | \`apps/api\` / \`apps/web\` |
 | `{{SOURCE_UNIT_TESTS}}` | \`apps/api/test\` / \`apps/web/test\` |
+| `{{SOURCE_COMPONENT_TESTS}}` | \`apps/api/test/component\` / \`apps/web/test/component\`（提案プロセスのCT置き場） |
 | `{{SOURCE_E2E_TESTS}}` | tests/e2e |
+| `{{CONVENTIONS_TEST_ID_ATTRIBUTE}}` | data-testid（提案プロセス②の「テスト容易性の契約」で使うテストID属性。umami のように `data-test` を使うプロジェクトはここを差し替える） |
 
 > `unitTests` は「テストランナーが拾える置き場所」を明示するためのもの。プロジェクトによっては
 > `tests/` 配下ではなく実装と併置（例 umami の `src/**/*.test.ts(x)`）で、そこを外すと
 > **テストが1件も実行されないまま合格扱いになる**ため、必ず実体に合わせること。
+
+> `componentTests` は**提案プロセス専用**（既存プロセスのプロンプトは参照しない）。
+> `unitTests` の**サブディレクトリ**にしてあるので、既存の vitest 設定
+> （`apps/web` は `include: ["test/**/*.test.{ts,tsx}"]`、`apps/api` は vitest 既定）のまま収集される。
+> **雛形（テストランナー設定）を変更せずに済ませるのが要件**——変更すると全variantに影響し、
+> 既存プロセスとの比較基準が動くため。別プロジェクトへ移す際もこの条件を満たすパスにすること。
 
 書き方の注意:
 - **配列値**はバッククオート付きで連結される（`` `apps/api` / `apps/web` ``）ので、
@@ -187,7 +219,10 @@ powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -
 | `<worktree>/.harness/metrics.jsonl` `reviews.jsonl` `state.json` | サンプル単体のデバッグ用（従来どおり） |
 | `<main>/.harness-data/metrics.jsonl` | **全サンプル追記。worktree を消しても残る** |
 | `<main>/.harness-data/reviews.jsonl` | 同上（レビューラウンド） |
+| `<main>/.harness-data/acceptance.jsonl` | 受入検証（1サンプル1行。`-Verify` で再実行すると追記され、集計は最新行を採用） |
+| `<main>/.harness-data/acceptance/<sample>.json` | 受入条件1件ごとの判定（CSVには数しか入らないため、内訳をここに残す） |
 | `<main>/.harness-data/state/<sample>.json` | `state.json` のスナップショット（保存のたび上書き） |
+| `<main>/.harness-data/results.csv` ほか | 集計CSV（`done` のたびに**全サンプルから再生成**。追記ではないので二重計上しない） |
 
 - 保存先は `git rev-parse --git-common-dir` から解決する（worktree 内から実行しても
   **メインリポジトリの `.git` を指す**）。`-Status` で実際のパスを確認できる。
@@ -239,10 +274,54 @@ powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant existing -
 要件定義 → IF設計&レビュー → 実装&ユニット&コンポーネントテスト&レビュー → E2E設計&レビュー → E2E実施
 （各フェーズ末でゲート停止）
 
+## 提案プロセスのフェーズ（`-Variant proposed`）
+
+| # | id | 名称 | 担当Skill | ゲート |
+|---|----|------|-----------|:---:|
+| ① | `requirements` | 要件定義 | requirements-analyst | ✅ 標準レビュー |
+| ② | `test-design` | E2E/IF/CT設計＆**テストコード作成**＆レビュー | test-engineer（+ backend-architect / frontend-engineer） | ✅ **重点レビュー** |
+| ③ | `implementation` | テスト起点実装＆ユニットテスト＆差分レビュー | backend-architect（+ frontend-engineer） | ✅ **差分レビューのみ**（`reviewScope: true`） |
+| ④ | `e2e-run` | E2Eテスト実施 | test-engineer | ✅ 結果確認 |
+
+- **phase id を既存プロセスと揃えてある**（`requirements` / `implementation` / `e2e-run`）ので、
+  `metrics.jsonl` を工程単位で突き合わせられる。
+- **①と④のプロンプトは既存プロセスと見出し以外が一字一句同一**。要件定義とE2E実施を独立変数から外し、
+  ②③の差だけが結果に出るようにしている。
+- ②では **E2E と CT のテストコードを実装前に書き、`red` であることを確認**して
+  `docs/tests/test-readiness-<STORY>.md` に記録させる。ここを省くと、収集すらされないテストが
+  ③で「全部緑」に化けて中心仮説の検証が無効になる。
+- ②の設計には**テスト容易性の契約**（ルーティング・テストID属性の規約・エラー文言・APIエラー形式）を
+  含めるが、**子コンポーネントの分割方針と props 署名は含めない**。内部構造まで固定すると
+  ③で「設計どおりに分割したらテストが落ちる」が起き、「②のテストは変更しない」という制約と衝突するため。
+  契約は**外から観測できるもの（URL・DOM・HTTP）に限る**。
+- ③は**②のテストを変更しない**のが原則。やむを得ず変更した場合は implementation-notes に理由を残し、
+  その差分は `review` 扱いにする。
+- ③のゲートで**コードレビュー省略率**を記録する（上記「コードレビュー省略率」参照）。
+
+### テストコードの置き分け（提案プロセス）
+
+省略率の分子は「**レビュー済みのテストが担保している変更**」なので、
+**レビュー済みテストと未レビューテストがパスで区別できる**必要がある。同じディレクトリに混在すると、
+`skip` 判定の裏取りも「②のテストを変更していないこと」の確認もできなくなる。
+
+| 置き場 | 誰が書くか | レビュー状態 | skip の根拠になるか |
+|--------|-----------|--------------|:---:|
+| `tests/e2e`（`{{SOURCE_E2E_TESTS}}`） | ② | **レビュー済み** | ✅ |
+| `apps/*/test/component`（`{{SOURCE_COMPONENT_TESTS}}`） | ② | **レビュー済み** | ✅ |
+| `apps/*/test` 直下（`{{SOURCE_UNIT_TESTS}}`） | ③ | 未レビュー | ❌（担保する差分は `review`） |
+
+- ③のプロンプトは `{{SOURCE_COMPONENT_TESTS}}` 配下への**書き込み・追加を禁止**している。
+  例外的にCTを足す場合も `{{SOURCE_UNIT_TESTS}}` 直下に置かせる（未レビューのテストであるため）。
+  **この禁止はハーネスが実測で検出する**（上記「レビュー済みテストの改変検出」）。
+- `unitTests` は**既存プロセスと同じ値のまま**にしてある。ここを `apps/*/test/unit` へ狭めると
+  既存プロセスのプロンプトが解決するパスが変わり、**比較基準（既存プロセスは一切変更しない）が崩れる**。
+  そのため「`component/` 配下＝②のレビュー済みテスト、それ以外＝③」という一方向の規約にしている。
+
 ## ベースラインのフェーズ（`-Variant baseline`）
 一括実装（要件のみ入力）の1フェーズのみ。進め方・スキルの使い分けはAIの自律判断に委ね、
 **途中ゲートなし**。フェーズ完了時にPRを作成し、**最終成果物のみ人が確認**する
-（1フェーズ構成のため実行直後に `done` となり、`-Revise` / `-Continue` は不要）。
+（1フェーズ構成なので、その唯一のゲートが最終ゲートになる。`-Review` → Submit review →
+必要なら `-Revise` → `-Continue` で完了、という流れは他の変種と同じ）。
 メトリクス（duration / cost / turns）は既存プロセスと同じく `metrics.jsonl` に記録される。
 
 ## 使い方
@@ -272,6 +351,11 @@ powershell -File harness/Invoke-Process.ps1 -Continue   # ← レビューOKな�
 powershell -File harness/Invoke-Process.ps1 -Status     # 進捗確認（計測データの保存先も表示される）
 ```
 
+> **最後の `-Continue`（＝`done` にする操作）は受入条件充足率の測定まで走る。**
+> アプリを起動 → Playwright MCP で受入条件を1件ずつ実機確認 → `acceptance.jsonl` に記録 →
+> 集計CSV（`results.csv`）を再生成、までが自動で行われるため**数分かかる**。
+> 詳細は「受入条件充足率」「最終集計CSV」を参照。
+
 サンプルを取り終えたら worktree は削除してよい（計測データは `<main>/.harness-data/` に残る）。
 ```powershell
 git worktree remove ..\KeihiSeisan-sample-existing-claude-1 --force
@@ -279,16 +363,17 @@ git worktree remove ..\KeihiSeisan-sample-existing-claude-1 --force
 
 ### ベースライン条件で1サンプルを回す
 ```powershell
-# 一括実装フェーズを実行 → 完了時にPR作成・done（途中ゲートなし）
+# 一括実装フェーズを実行 → 完了時にPR作成・最終ゲートで停止（途中ゲートなし）
 powershell -File harness/Start-Sample.ps1 -N 1 -Story US-001 -Variant baseline
 
 # 最終成果物のPRを人が確認する（レビュー時間の計測はここだけ）
 powershell -File harness/Invoke-Process.ps1 -Review     # 開始打刻 → ブラウザでPRを開く
 #   …GitHub上で「Submit review」…
-powershell -File harness/Invoke-Process.ps1 -Continue   # ← 最後のラウンドを閉じて reviews.jsonl へ記録
+powershell -File harness/Invoke-Process.ps1 -Revise     # ← 指摘があれば反映（何度でも可）
+powershell -File harness/Invoke-Process.ps1 -Continue   # ← 最後のラウンドを閉じて reviews.jsonl へ記録・done
 ```
-> baseline は**唯一のゲートが最終フェーズ**（`done` になる）。この `-Continue` は次フェーズへ
-> 進む操作ではなく「最終レビューを記録する」操作。叩かないと**比較対象群のレビュー時間だけが
+> baseline は**唯一のゲートが最終フェーズ**。この `-Continue` は次フェーズへ
+> 進む操作ではなく「最終レビューを記録して完了させる」操作。叩かないと**比較対象群のレビュー時間だけが
 > 丸ごと欠測**するので必ず実行すること（`existing` の最終フェーズ `e2e-run` も同じ）。
 テスト実行等を自動許可して無人で流す場合は `-Unattended` を付ける（隔離worktree前提）。
 
@@ -355,10 +440,11 @@ powershell -File harness/Invoke-Process.ps1 -Continue  # または -Revise
 | `read_ms` | 参考: 読み込み時間。`review_opened_at` → `first_comment_at` |
 | `write_ms` | 参考: 指摘を書いていた時間（旧定義）。`first_comment_at` → `submitted_at`。感度分析用 |
 | `latency_ms` | 参考: 承認ラグ。`gate_opened_at`（ハーネス側・ローカル時刻）→ `submitted_at` |
-| `outcome` | `continue`（合格）/ `revise`（差し戻し）/ `skip`（提案プロセスの省略・未実装） |
-| `review_time_source` | 開始打刻の由来。`pending-review`（正常）/ `first-comment`（`-Review` 忘れ・過小評価）/ `missing`（欠測＝`review_ms` は `null`）/ `skipped` |
+| `outcome` | `continue`（合格）/ `revise`（差し戻し） |
+| `review_time_source` | 開始打刻の由来。`pending-review`（正常）/ `first-comment`（`-Review` 忘れ・過小評価）/ `missing`（欠測＝`review_ms` は `null`） |
 | `comments` | 人間の指摘件数。**ハーネスの自動返信（`replyTo` 付き）は除外済み** |
 | `diff_files` / `diff_added` / `diff_deleted` | レビュー対象数。フェーズのベースSHA→HEAD の `git diff --numstat` |
+| `scope_*` | コードレビュー省略率（提案プロセスのみ）。下記「コードレビュー省略率」参照 |
 | `round` | ゲート内のラウンド番号。`-Revise` ごとに 1,2,3… と増える（フェーズが変われば1に戻る） |
 | `pr` / `review_id` / `review_state` | 突合用の生値（`review_state` は自分のPRだと常に `COMMENTED`） |
 | `story` / `variant` / `sample` / `phase` | 分類キー（`sample` の詳細は「計測データの保存先」参照） |
@@ -370,12 +456,75 @@ powershell -File harness/Invoke-Process.ps1 -Continue  # または -Revise
 > 欠測は**必ず `null`** で残す（0分や6日に化けさせない）。`missing` の行は集計から除外し、
 > `first-comment` の行は「過小評価」として区別して扱うこと。
 
+> `outcome` に `skip` は使わない。提案プロセスも**レビュー自体は毎ゲート実施する**（省略するのは
+> テストで担保できたコード差分だけ）ため、ラウンドの結末は `continue` / `revise` の2値で足りる。
+> 省略の度合いは下記 `scope_*` 列が担当する。
+
+### コードレビュー省略率（`scope_*` 列・提案プロセスの主指標）
+
+提案プロセスの実装フェーズは、変更ファイルごとに `skip`（テストで担保済み＝コードを読まない）か
+`review`（読む）かを判定した **`docs/reviews/review-scope-<STORY>.json`** を出力する。
+ハーネスはこれを読み、**`git diff` の実測値**と突き合わせてレビュー範囲を記録する。
+
+```
+コードレビュー省略率 = scope_skipped_added ÷ scope_total_added   （規模ベース・主）
+                     = scope_skipped_files ÷ scope_total_files   （対象数ベース・従）
+```
+
+| 列 | 意味 |
+|----|------|
+| `scope_source` | `review-scope`（正常）/ `missing`（JSONが無い・壊れている＝欠測）/ `none`（記録対象外のゲート） |
+| `scope_total_files` / `scope_skipped_files` | 対象数ベースの分母・分子 |
+| `scope_total_added` / `scope_skipped_added` | **規模ベースの分母・分子（主）** |
+| `scope_unlisted_files` | JSONに記載の無い変更ファイル数。**データ品質のシグナル**（0でないラウンドは集計時に要確認） |
+| `scope_reviewed_tests_changed` / `scope_reviewed_tests` | ③が**レビュー済みテストに出した差分**の件数とパス一覧。**検証の妥当性のシグナル**（下記） |
+
+設計上の要点:
+- **分母は必ず実測の `git diff`**（フェーズのベースSHA→HEAD）。JSONは「どのパスを `skip` とみなすか」の
+  参照にしか使わない。**行数をAIに書かせない**のは、分母・分子が自己申告になると指標が壊れるため。
+- **JSONに載っていない変更ファイルは保守的に `review` として数える**（列挙漏れで省略率が水増しされない）。
+  そのぶん `scope_unlisted_files` として件数を残し、後から品質を判定できるようにしてある。
+- **記録するのは `processes/<variant>.json` で `reviewScope: true` を持つフェーズのゲートだけ**。
+  他は全列 `null` ＋ `scope_source="none"` になる（`existing` / `baseline` は常に `none`）。
+  `review-scope-<STORY>.json` は一度作られると後続フェーズにも残るため、**ファイルの有無ではなく
+  フェーズ定義で判定**している（そうしないと④のゲートでも誤って記録される）。
+- 分母には docs 等の非コード変更も含まれる（AIが `review` と判定するため省略率は保守的に出る）。
+  コードだけに絞りたい場合は JSON の `path` でフィルタできるよう、**全変更ファイルを列挙させている**。
+- JSONが無い／未記載ファイルがある場合は**ゲート停止時に警告する**が、**実行は止めない**
+  （計測の失敗で実験を止めない方針。`Get-DiffStats` と同じ）。
+
+レビュアーの手順（③のゲート）: まず `review-scope-<STORY>.md` を読んで **`skip` 判定の妥当性を確認**し、
+その上で `review` 対象のファイルだけコードを読む。**判定の妥当性確認にかかった時間も `review_ms` に
+含まれる**（正直に測る）。判定が不当なら `-Revise` で差し戻す。
+
+### レビュー済みテストの改変検出（`scope_reviewed_tests*`）
+
+省略率が成立する前提は「**③はレビュー済みテストを緑にしただけ**」であること。③がテストの側を
+実装に合わせて書き換えていたら、`skip` の根拠は消え**中心仮説の検証そのものが無効**になる。
+プロンプトでは禁止しているが、遵守を自己申告に委ねないためハーネスが実測する。
+
+- 対象は `project.json` の **`source.e2eTests` と `source.componentTests` 配下**
+  （＝②が書き、人間のレビューを受けたテストの置き場）。`source.unitTests` 直下は③の担当なので対象外。
+- フェーズのベースSHA→HEAD の diff に上記配下のファイルが現れたら、**ゲート停止時に警告**し、
+  件数とパスを `scope_reviewed_tests_changed` / `scope_reviewed_tests` に記録する。
+  変更・削除だけでなく**新規追加も検出**する（未レビューのテストが「レビュー済み」の集合に紛れるため）。
+- **停止はしない**（計測の都合で実験を止めない方針）。レビュアーが次を確認して判断する:
+  1. implementation-notes に変更理由が記録されているか
+  2. アサーションの緩和・削除・`skip` 化になっていないか
+  3. 当該差分が review-scope で `review` 扱いになっているか
+- 省略率が欠測（`scope_source=missing`）のラウンドでも**この検出は独立に動く**。
+- 集計時は `scope_reviewed_tests_changed > 0` のサンプルを「テスト改変が起きた試行」として区別すること。
+
 ### レビュー指摘の反映（修正フェーズ）
 各ゲート（`awaiting-review`）では、次の2つの経路がある。
 - `-Revise` … PR上のレビューコメント（会話・差分インライン・レビュー要約）を収集し、**固定プロンプト
   `prompts/<variant>/99-revise.md`** に注入して直前フェーズと同じ skill で再実行 → 同一PRへ push →
   **各コメントへ自動返信**。状態は `awaiting-review` のまま。**指摘が残る限り何度でも**繰り返せる。
 - `-Continue` … レビュー合格として次フェーズへ進む。
+
+**最終フェーズのゲートも同じ**。全フェーズを実行し終えた時点では `awaiting-review` のまま止まり、
+`-Continue` で最終ラウンドを閉じたときに初めて `done` になる（＝最終ゲートの指摘も `-Revise` で
+反映できる）。`done` になった後は `-Revise` を受け付けない。
 
 前回の出力時刻を `state.json` の `lastRevisedAt` に記録し、それ以降に付いたコメントだけを対象にするため、
 同じ指摘の二重対応は起きない。修正の実行も `metrics.jsonl` に `phase="<id>-revise"` で記録され、
@@ -393,6 +542,167 @@ powershell -File harness/Invoke-Process.ps1 -Continue  # または -Revise
 
 > 再現性の注意: 修正フェーズは人間のコメント依存で本質的に再現不能。成果③（ばらつき検証）を回すときは
 > `-Revise` を挟まず `-Continue` のみで流すこと。`-Revise` は主に成果①（レビューコスト計測）で用いる。
+
+## 受入条件充足率（`acceptance.jsonl` / 測定指標②の主指標）
+
+全ゲートを閉じて **`done` になる瞬間に自動実行**される計測工程。
+`stories/<STORY>/acceptance-criteria.md`（人が事前に定義した基準）に対して、
+**完成物が実際に何件満たしているか**を Playwright MCP の実機操作で測る。
+
+```
+受入条件充足率 = satisfied ÷ total
+   total     = acceptance-criteria.md の AC 件数（ハーネスが自分でパースして数える）
+   satisfied = verdict が satisfied だった AC の件数（同上）
+```
+
+### なぜ「プロセスの外側」に置くのか
+
+開発フェーズのプロンプトは**全変種で `acceptance-criteria.md` の閲覧を禁止**している
+（読ませると「答えを見てテストを書く」ことになり、充足率が実力を測らなくなる）。
+この禁止を崩さないため、受入検証は `processes/<variant>.json` のフェーズに**含めず**、
+`done` への遷移時に走る別工程として実装してある。したがって:
+
+- 既存プロセス（5工程）・提案プロセス（4工程）の**工程定義は一切変わらない**（比較基準が動かない）
+- `metrics.jsonl` には `phase="acceptance-verify"` として記録されるので、
+  集計時に**プロセスのリードタイムから除外できる**（計測工程はプロセスの一部ではない）
+- MCP（Playwright）も**この工程にだけ**渡す（`--mcp-config` + `--strict-mcp-config`）。
+  開発フェーズのツール構成は従来どおりで、独立変数が増えない
+
+### 測り方の設計（省略率と同じ「自己申告を数値にしない」原則）
+
+| 何を | 誰が決めるか |
+|------|--------------|
+| **分母**（AC 件数） | **ハーネス**が `acceptance-criteria.md` をパースして数える |
+| **分子**（充足数） | **ハーネス**が AI の判定JSONを AC ごとに突き合わせて数え直す |
+| AC ごとの verdict | AI（Playwright MCP で実機確認した結果） |
+
+- AI が書いた**充足数・充足率は使わない**（プロンプトでも「書くな」と指示している）。
+- **判定行が無い AC は充足に数えない**（`unreported`）。列挙漏れで率が水増しされない。
+- **AC 一覧に無い ID の判定は無視する**（`extra_reported`）。分子に混ざらない。
+- **未知の `verdict` は充足に数えない**（`invalid_verdict`）。
+- 判定JSONが無い／壊れている場合は **`rate=null`（欠測）**。0% には化けさせない。
+- 検証は**開発チームが書いた E2E の実行結果を根拠にしない**。それを許すと
+  「要件を満たしているか」ではなく「自分が書いたテストが通るか」を測ってしまう。
+
+### 検証環境の起動
+
+`project.json` の `verify` セクションに従い、ハーネスがアプリを起動して疎通確認してから
+エージェントを呼ぶ（**起動待ちが `duration_ms` に混入しないよう、計測区間の外で行う**）。
+
+```json
+"verify": {
+  "baseUrl": "http://localhost:3000",
+  "setup": ["npm run db:up", "npx -y @playwright/mcp@0.0.79 install-browser chrome-for-testing"],
+  "servers": [
+    { "name": "api", "command": "npm run dev:api", "url": "http://localhost:4000/health", "timeoutSec": 90 },
+    { "name": "web", "command": "npm run dev:web", "url": "http://localhost:3000", "timeoutSec": 180 }
+  ]
+}
+```
+
+- 既に起動しているサーバ（`url` が応答する）は**ハーネスから起動も停止もしない**（手元のdevサーバを殺さない）。
+- ハーネスが起動したものは検証後に**プロセスツリーごと**停止する（`npm` の下にぶら下がる node を残さない）。
+- `setup` の失敗は**警告して続行**する（Docker 未起動などで計測全体を止めない）。
+  サーバが `timeoutSec` 以内に応答しない場合だけ中断する。
+
+### Playwright MCP のブラウザ（つまずきやすい点）
+
+`harness/mcp/playwright.json` は **`--browser chromium` が必須**。省略すると既定が
+**実機の Google Chrome** になり、未インストールの環境では
+`Chromium distribution 'chrome' is not found` で**全ACが `blocked`** になる（実測で確認済み）。
+
+必要なブラウザ実体は **MCP 自身のバージョンに紐づく**ため、リポジトリの Playwright とは別物。
+`npx playwright install chromium`（リポジトリ側 1.48）では**MCP が要求するリビジョンは入らない**ので、
+`setup` では **MCP 自身の `install-browser`** を使う。
+
+- **MCP のバージョンは固定する**（`@playwright/mcp@0.0.79`）。`@latest` にすると10サンプル取得中に
+  MCP の実体が入れ替わり、モデルをエイリアス指定したときと同じ形で比較が静かに壊れる。
+  **`mcp/playwright.json` と `project.json` の `install-browser` は必ず同じバージョンにすること。**
+- `install-browser` は「依存を先に入れろ」という Playwright の警告バナーを出すが、**無視してよい**
+  （ブラウザのダウンロード自体は成功する）。
+- 既定は `--headless`。ブラウザを画面に出して挙動を目視したいときは `mcp/playwright.json` から外す。
+
+### 記録される項目（`acceptance.jsonl`・1サンプル1行）
+
+| 列 | 意味 |
+|----|------|
+| `total` / `satisfied` | **分母・分子（主指標）**。どちらもハーネスが数えた値 |
+| `rate` | **受入条件充足率** = `satisfied / total`。欠測は `null` |
+| `not_satisfied` / `blocked` | 未充足 / 判定に到達できなかった件数 |
+| `unreported` / `invalid_verdict` / `extra_reported` | データ品質のシグナル（いずれも分子に入らない） |
+| `placeholder_criteria` | 「（未記入）」のまま残っている AC 件数。**分母からは外さない**（外すと書き忘れが静かに消えて率が良く見える） |
+| `impl_touched` / `impl_touched_files` | 計測工程が `docs/acceptance` 以外を変更した件数とパス。**0 であるべき**（実装を直してから測ると「完成物の充足率」ではなくなる） |
+| `source` | `acceptance-result`（正常）/ `missing`（判定JSONが無い・壊れている＝欠測） |
+
+AC 1件ごとの判定（条件文・期待・実際・証跡）は `.harness-data/acceptance/<sample>.json` と
+`acceptance-details.csv` に残る。**CSV に入るのは数だけ**なので、報告書で個別の根拠を示すときはこちらを使う。
+
+### 使い方
+
+`done` にする `-Continue` が自動で実行するので、通常は**追加操作は不要**。
+失敗した場合（サーバ起動失敗・判定JSONの破損など）だけ次を使う。
+
+```powershell
+powershell -File harness/Invoke-Process.ps1 -Verify     # 受入検証をやり直す（done 後のみ）
+powershell -File harness/Invoke-Process.ps1 -ExportCsv  # 集計CSVだけ再生成する
+```
+
+`-Status` は `done` のサンプルについて充足率（または未測定・欠測）を表示するので、
+**worktree を消す前にここで欠測していないか確認**すること。
+
+---
+
+## 最終集計CSV（`Export-Results.ps1`）
+
+発表用の散布図（**横軸=レビュー時間 / 縦軸=受入条件満足割合**、モデル4種×プロセス2種の8点）を
+そのまま描ける形にした主成果物。`done` のたびに `.harness-data/` の追記ログから
+**まるごと再生成**する（追記ではないので何度実行しても二重計上しない）。
+
+### `results.csv`（8カラム・1サンプル1行）
+
+| 列 | 意味 |
+|----|------|
+| `model` | 実行時に解決されたモデル実体（`-Model` で上書きした行は混ぜない） |
+| `process` | プロセス変種（`existing` / `proposed` / `baseline`） |
+| `review_ms_1` 〜 `review_ms_5` | **工程別の人手レビュー時間（ミリ秒）**。`processes/<variant>.json` のフェーズ順 |
+| `acceptance_rate` | **受入条件充足率**（0〜1） |
+
+```csv
+model,process,review_ms_1,review_ms_2,review_ms_3,review_ms_4,review_ms_5,acceptance_rate
+claude-sonnet-5,existing,900000,900000,900000,900000,900000,0.75
+claude-sonnet-5,proposed,900000,900000,900000,900000,,0.875
+```
+
+- **工程列は既存プロセスの5工程に合わせて5列固定**。提案プロセスは4工程なので
+  `review_ms_5` が空欄になる（両プロセスを同じ表に並べられる）。
+  列と工程の対応は変種ごとに異なるため、実際の工程IDは `results-detail.csv` の `phase_1..5` で確認する。
+
+  | 列 | existing | proposed |
+  |----|----------|----------|
+  | `review_ms_1` | requirements | requirements |
+  | `review_ms_2` | interface-design | test-design |
+  | `review_ms_3` | implementation | implementation |
+  | `review_ms_4` | e2e-design | e2e-run |
+  | `review_ms_5` | e2e-run | （なし） |
+
+- **工程別レビュー時間は、その工程の全ラウンドの合計**（`-Revise` による2周目以降を含む）。
+  「差し戻しを含めて、その工程のレビューに人が何分使ったか」が知りたい値のため。
+- `review_ms=null`（`review_time_source=missing`）の**欠測ラウンドは加算しない**（0分として混ぜない）。
+  全ラウンドが欠測の工程は空欄になる。欠測ラウンド数は `results-detail.csv` の `missing_rounds_*` を見ること。
+- `rolled_back=true` の行は除外。
+- 横軸に使う合計レビュー時間は5列の合計（`results-detail.csv` の `review_ms_total` に算出済み）。
+  分で見たい場合は 60000 で割る。
+
+### 併せて出力されるもの
+
+| ファイル | 用途 |
+|----------|------|
+| `results-detail.csv` | 突合・監査用。`sample` / `story` / 工程ID / 欠測ラウンド数 / 受入判定の内訳 / `impl_touched` |
+| `acceptance-details.csv` | **受入条件1件ごとの判定**（sample × AC）。報告書で個別の根拠を示すときに使う |
+
+> **同一 (model, process) で複数サンプルを取ると `results.csv` に同じ組み合わせの行が複数並ぶ**
+> （8点の散布図なら各組み合わせ1サンプル）。どの行がどのサンプルかは `results-detail.csv` で辿れる。
+> n=10 のばらつき検証をするときは `results-detail.csv` 側を集計に使うこと。
 
 ### フェーズの巻き戻し（やり直し）
 成果物が気に入らないフェーズを**丸ごと破棄してやり直す**には `-Rollback` を使う。
@@ -418,10 +728,14 @@ powershell -File harness/Invoke-Process.ps1 -Rollback -ToPhase 3             # �
 > `phaseBases` は本機能導入後に実行したフェーズにしか無いため、導入前のフェーズは手動で巻き戻すこと。
 
 ### 実験者が手で行うステップ（自動化しない）
-- **受入条件の定義**（`acceptance-criteria.md`）: 網羅度の基準。フェーズ開始前に確定。
+- **受入条件の定義**（`acceptance-criteria.md`）: 充足率の分母。**フェーズ開始前に確定させること**
+  （未記入のまま `done` まで進むと、その AC は分母に残ったまま充足しないので率が不当に下がる）。
 - **欠陥注入**（`injected-defects.md`）: 実装フェーズ完了・ゲート停止後、レビュー前に手で仕込む。
 - **レビュー判定**: 各ゲートのPRで実施。手順は `-Review` → GitHubで Submit review → `-Continue`/`-Revise`
   の3ステップに固定（レビュー時間・対象数・指摘件数の記録は自動）。
+- **受入検証の結果確認**: 充足率の算出自体は自動だが、`impl_touched > 0`（計測工程が実装を触った）や
+  `unreported`/`blocked` が多いサンプルは、`acceptance-details.csv` と
+  `docs/acceptance/acceptance-result-<STORY>.md` を読んで妥当性を確認すること。
 
 ### 無人で一気通貫（ゲート停止を挟まず流したい検証時）
 `-Unattended` で `--permission-mode bypassPermissions`（Bash/テスト実行も自動許可）。
@@ -429,8 +743,9 @@ powershell -File harness/Invoke-Process.ps1 -Rollback -ToPhase 3             # �
 `-Continue` を自動で叩くループは別途用意する（今は手動継続が既定）。
 
 ## 拡張ポイント
-- **提案プロセス**: `processes/proposed.json` と `prompts/proposed/*.md` を追加すれば、同じ
-  スクリプトで変種を切り替えられる（`-Variant proposed`）。
+- **新しいプロセス変種**: `processes/<variant>.json` と `prompts/<variant>/*.md` を追加すれば、同じ
+  スクリプトで切り替えられる（`-Variant <variant>`）。フェーズ実行・ゲート・計測はスクリプト改修なしで動く
+  （`proposed` もこの仕組みで追加した。追加が必要だったのは省略率の記録だけ）。
 - **別プロジェクトへの適用**: `harness/` 一式と `.claude/skills/` をコピーし、`project.json` を
   対象プロジェクトの実体（名前・設計書パス・ソースコードパス）に書き換える。
   `processes/*.json`（フェーズ定義）とプロンプトは**変更しない**のが原則

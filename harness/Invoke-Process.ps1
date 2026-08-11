@@ -32,6 +32,12 @@
 
   # 進捗確認
   powershell -File harness/Invoke-Process.ps1 -Status
+
+  # 受入条件充足率の測定をやり直す（done への遷移時に自動実行されるので通常は不要）
+  powershell -File harness/Invoke-Process.ps1 -Verify
+
+  # 集計CSV（results.csv）だけ再生成する
+  powershell -File harness/Invoke-Process.ps1 -ExportCsv
 #>
 [CmdletBinding()]
 param(
@@ -54,6 +60,11 @@ param(
   # 巻き戻し先フェーズ。id(例 implementation) か 1始まりの番号(例 3)。省略時は直近フェーズ。
   [string]$ToPhase,
   [switch]$Status,
+  # 受入条件充足率の測定をやり直す（done への遷移時に自動実行されるが、失敗した場合や
+  # 判定JSONが壊れていた場合にここから再実行できる）。
+  [switch]$Verify,
+  # 集計CSV（results.csv）だけを再生成する。計測は行わない。
+  [switch]$ExportCsv,
   # 実行エージェント。省略時は harness/experiment.json の agent（さらに省略時は claude）。
   # -Init 時に state.json へ保存され、以降のフェーズは同じエージェントで実行される。
   [ValidateSet("claude","copilot")][string]$Agent,
@@ -141,6 +152,11 @@ function Add-DataRow($fileName, $row) {
 # 呼び出し側はここを通して「正規化された1件の計測レコード」だけを受け取る。
 . (Join-Path $RepoRoot "harness/Agents.ps1")
 
+# 受入条件充足率（測定指標②の主指標）の計測モジュール。
+# プロセスのフェーズではなく **done の瞬間に走る計測工程** として分離してある
+# （開発フェーズは全変種で acceptance-criteria.md の閲覧を禁止しており、その禁止を崩さないため）。
+. (Join-Path $RepoRoot "harness/Acceptance.ps1")
+
 # --- プロジェクト固有情報の外出し（harness/project.json） ---
 # 「プロジェクト名 / 設計書パス / ソースコードパス」をプロンプトから切り離し、
 # 実行時に {{PROJECT_NAME}} {{DOCS_*}} {{SOURCE_*}} として差し込む。
@@ -214,13 +230,25 @@ function ConvertTo-TokenName($name) { ($name -creplace '([A-Z])', '_$1').ToUpper
 # project.json から「{{TOKEN}} => 値」の対応表を作る。
 # トークン名は <セクション>_<キー>（例: docs.specReviews -> DOCS_SPEC_REVIEWS）。
 # 値が配列の場合は `a` / `b` の形（バッククオート付き）で連結する。
+#
+# `conventions` は**任意セクション**。プロジェクト間で異なる「規約の実体」
+# （例: テストID属性が data-testid か data-test か）をプロンプトから外へ出すための入れ物で、
+# 使わないプロジェクトは省略できる。必須にすると、このセクションを持たない既存の
+# project.json が**全フェーズで**失敗するため、docs/source とは扱いを分ける。
+# 省略した状態でプロンプトが {{CONVENTIONS_*}} を参照していれば、
+# 下の未解決プレースホルダ検査が実行前に止めるので、取りこぼしにはならない。
 function Get-ProjectTokens {
+  $required = @('docs','source')
+  $optional = @('conventions')
   $project = Get-Project
   if (-not $project.name) { throw "harness/project.json に 'name' がありません。" }
   $map = @{ 'PROJECT_NAME' = "$($project.name)" }
-  foreach ($section in @('docs','source')) {
+  foreach ($section in ($required + $optional)) {
     $bag = $project.$section
-    if (-not $bag) { throw "harness/project.json に '$section' セクションがありません。" }
+    if (-not $bag) {
+      if ($optional -contains $section) { continue }
+      throw "harness/project.json に '$section' セクションがありません。"
+    }
     foreach ($p in $bag.PSObject.Properties) {
       $token = "$(ConvertTo-TokenName $section)_$(ConvertTo-TokenName $p.Name)"
       $map[$token] = if ($p.Value -is [System.Array]) {
@@ -253,6 +281,33 @@ function Expand-Prompt($text, $tokens, $rawTokens) {
   $text
 }
 
+# --- プロセス定義（harness/processes/<variant>.json）の読み出し ---
+# メインスコープの $proc は関数から見えないため、フェーズ属性（gate / reviewScope など）を
+# 参照したい関数はここを通す。1実行中は不変なので variant ごとにキャッシュする。
+$script:ProcessCache = @{}
+function Get-ProcessDef($variant) {
+  if (-not $script:ProcessCache.ContainsKey("$variant")) {
+    $path = Join-Path $RepoRoot "harness/processes/$variant.json"
+    if (-not (Test-Path $path)) { throw "プロセス定義がありません: $path" }
+    $script:ProcessCache["$variant"] = (Read-Utf8 $path) | ConvertFrom-Json
+  }
+  $script:ProcessCache["$variant"]
+}
+function Get-PhaseDef($variant, $phaseId) {
+  @((Get-ProcessDef $variant).phases | Where-Object { $_.id -eq $phaseId }) | Select-Object -First 1
+}
+# そのフェーズのゲートでレビュー範囲（省略率）を記録するか。
+# **ファイルの有無で判定してはいけない**（review-scope-<STORY>.json は一度作られると後続
+# フェーズにも存在し続けるため、④のゲートで誤記録される）。必ずフェーズ定義を見る。
+function Test-ReviewScopePhase($variant, $phaseId) {
+  if (-not $variant -or -not $phaseId) { return $false }
+  $def = Get-PhaseDef $variant $phaseId
+  # プロセス定義に無い id（変種の書き換え後の古い state など）は「記録対象外」に倒す。
+  # 計測の都合で実験を止めないため、ここで throw しない。
+  if (-not $def) { return $false }
+  [bool](Get-Prop $def 'reviewScope')
+}
+
 function Load-State {
   if (-not (Test-Path $StateFile)) { return $null }
   (Read-Utf8 $StateFile) | ConvertFrom-Json
@@ -272,7 +327,7 @@ function Save-State($s) {
 
 function Show-Status($s) {
   if (-not $s) { Write-Host "状態なし。-Init で開始してください。"; return }
-  $proc = (Read-Utf8 (Join-Path $RepoRoot "harness/processes/$($s.variant).json")) | ConvertFrom-Json
+  $proc = Get-ProcessDef $s.variant
   $agent = Get-Prop $s 'agent'; if (-not $agent) { $agent = 'claude' }
   $sample = Get-SampleId; if (-not $sample) { $sample = '(不明)' }
   Write-Host "Story=$($s.story)  Variant=$($s.variant)  Sample=$sample  Agent=$agent  Status=$($s.status)"
@@ -285,6 +340,17 @@ function Show-Status($s) {
   if ($gatePhase -and -not (Get-Prop $s 'roundClosed')) {
     $mark = if (Get-Prop $s 'pendingReviewId') { "打刻済み" } else { "未打刻（-Review で開始してください）" }
     Write-Host ("  レビュー: phase={0} round={1} 開始={2}" -f $gatePhase, (Get-Prop $s 'reviewRound'), $mark) -ForegroundColor DarkGray
+  }
+  # 受入条件充足率（done 時に自動計測）。欠測に気づけるよう done のときだけ明示する。
+  if ($s.status -eq 'done') {
+    $acc = Get-LastAcceptanceRow $sample
+    if (-not $acc) {
+      Write-Host "  受入条件充足率: 未測定（-Verify で測定してください）" -ForegroundColor DarkYellow
+    } elseif ($null -eq $acc.rate) {
+      Write-Host "  受入条件充足率: 欠測（source=$($acc.source)。-Verify でやり直してください）" -ForegroundColor DarkYellow
+    } else {
+      Write-Host ("  受入条件充足率: {0:P1} ({1}/{2})" -f $acc.rate, $acc.satisfied, $acc.total) -ForegroundColor DarkGray
+    }
   }
   # 計測データの保存先（#13）。worktree を消す前にここへ揃っているかを確認できるようにする。
   Write-Host ("  計測データ: {0}  （worktree ローカル: {1}）" -f (Get-DataDir), $StateDir) -ForegroundColor DarkGray
@@ -362,7 +428,9 @@ function Set-RolledBackRows($file, $phaseIds, $sample) {
 # エージェント申告値は agent_* / api_* に併記し、突合用にとどめる。
 # コストは通貨が揃わない（Claude=USD / Copilot=AIクレジット）ため cost_native + cost_unit で
 # 生値のまま残す。エージェントをまたいだ比較にはトークン量を使うこと。
-function Run-Agent($prompt, $phaseId, $variant, $story, $agent, $permission) {
+# $mcpConfig … MCPサーバ定義JSONのパス。**受入検証フェーズだけ**に渡す（開発フェーズは常に $null）。
+# 開発プロセスの条件を動かさないため、MCPは計測工程の外へ漏らさない。
+function Run-Agent($prompt, $phaseId, $variant, $story, $agent, $permission, $mcpConfig) {
   $cfg        = Get-AgentConfig $agent
   $overridden = [bool]$Model                       # -Model による明示上書き = 実験条件からの意図的な逸脱
   # 変数名を $Model と変えているのは意図的。PowerShell の変数名は大文字小文字を区別しないため、
@@ -374,7 +442,7 @@ function Run-Agent($prompt, $phaseId, $variant, $story, $agent, $permission) {
     Write-Host "-Model '$Model' で experiment.json のモデル指定を上書きしています。このフェーズは実験条件外です（metrics に model_overridden=true が入ります）。本番サンプルの分布に混ぜないこと。" -ForegroundColor DarkYellow
   }
 
-  $r = Invoke-Agent -Agent $agent -Prompt $prompt -Model $useModel -Permission $permission -Limits $limits
+  $r = Invoke-Agent -Agent $agent -Prompt $prompt -Model $useModel -Permission $permission -Limits $limits -McpConfig $mcpConfig
 
   # メトリクス追記（成果③のばらつき検証／成果①のリワークコスト計測の土台）
   $metric = [ordered]@{
@@ -514,6 +582,124 @@ function Get-DiffStats($base) {
   [pscustomobject]@{ files = $files; added = $added; deleted = $deleted }
 }
 
+# 上と同じ diff を**パス単位**で返す（Get-DiffStats は集計値しか返さないため）。
+# 戻り値: @{ path; added; deleted } の配列。バイナリ（numstat が '-'）は行数 0 として扱う。
+# 取得に失敗したら $null（＝計測不能。0件と区別する）。
+# 注: リネームは numstat が `src/{a => b}.ts` 形式で返すため、review-scope の申告パスと
+# 一致せず「未記載＝review 扱い」に倒れる。オプションで潰さないのは Get-DiffStats と
+# 同じ diff を見せるため（両者の files/added がずれる方が解釈を誤る）。保守側に倒れるので実害はない。
+function Get-DiffFiles($base) {
+  if (-not $base) { return $null }
+  $ErrorActionPreference = 'Continue'
+  $lines = @(git diff --numstat $base HEAD 2>$null)
+  if ($LASTEXITCODE -ne 0) { return $null }
+  $out = New-Object System.Collections.ArrayList
+  foreach ($ln in $lines) {
+    if (-not "$ln".Trim()) { continue }
+    $p = "$ln" -split "`t"
+    if ($p.Count -lt 3) { continue }
+    [void]$out.Add([pscustomobject]@{
+      path    = $p[2]
+      added   = if ($p[0] -ne '-') { [int]$p[0] } else { 0 }
+      deleted = if ($p[1] -ne '-') { [int]$p[1] } else { 0 }
+    })
+  }
+  ,$out.ToArray()
+}
+
+# パス比較の正規化（`git diff` は '/' 区切り・AIの申告は '\' や './' 混じりになり得る）。
+# Windows 前提なので大文字小文字は無視する。
+function ConvertTo-ComparablePath($p) {
+  $q = "$p".Trim().Replace('\', '/')
+  if ($q.StartsWith('./')) { $q = $q.Substring(2) }
+  $q.ToLowerInvariant()
+}
+
+# reviewScope フェーズの**前段でレビューを受けたテスト**の置き場（project.json 由来）。
+# 提案プロセスでは②が `source.e2eTests` と `source.componentTests` にテストを書き、
+# 人間のレビューを受ける。③がここへ差分を出す＝**レビュー済みテストを実装側の都合で
+# 書き換えた**ということであり、「レビュー済みテストが実装を担保する」という中心仮説の
+# 前提そのものが崩れる。プロンプトでは禁止しているが、遵守を自己申告に委ねないため実測する。
+function Get-ReviewedTestPrefixes {
+  $src = (Get-Project).source
+  $out = New-Object System.Collections.ArrayList
+  foreach ($key in @('e2eTests','componentTests')) {
+    $p = $src.PSObject.Properties[$key]
+    if (-not $p -or -not $p.Value) { continue }
+    foreach ($v in @($p.Value)) {
+      $n = (ConvertTo-ComparablePath $v).TrimEnd('/')
+      if ($n) { [void]$out.Add($n) }
+    }
+  }
+  ,$out.ToArray()
+}
+
+# ===========================================================================
+#  コードレビュー省略率（測定指標③ / 提案プロセスの主指標）
+# ---------------------------------------------------------------------------
+#  分母は**必ず実測の `git diff`**、AIが書いた review-scope-<STORY>.json は
+#  「どのパスを skip とみなすか」の参照にのみ使う（行数はAIに書かせない＝自己申告にしない）。
+#  JSON に載っていない変更ファイルは**保守的に review として数える**
+#  （列挙漏れで分子＝省略できた量が水増しされるのを防ぐ）。
+#
+#  記録対象は `processes/<variant>.json` で `reviewScope: true` を持つフェーズのゲートだけ。
+#  それ以外（existing / baseline の全フェーズ・提案プロセスの①②④）は $null を返し、
+#  reviews.jsonl では scope_source="none" になる。
+# ===========================================================================
+function Get-ReviewScopeStats($s, $phaseId) {
+  if (-not (Test-ReviewScopePhase (Get-Prop $s 'variant') $phaseId)) { return $null }
+
+  # 省略率が欠測でも「レビュー済みテストへの差分」は独立に測れるため、器を先に作って埋めていく。
+  $r = [ordered]@{
+    source = 'missing'; total_files = $null; skipped_files = $null
+    total_added = $null; skipped_added = $null; unlisted_files = $null
+    reviewed_tests = $null; reviewed_tests_changed = $null
+  }
+
+  $files = Get-DiffFiles (Get-PhaseBase $s $phaseId)
+  if ($null -eq $files) { return [pscustomobject]$r }   # ベースSHA未記録／git 失敗＝計測不能
+
+  # ①レビュー済みテストへの差分（改変・削除・新規追加はいずれもプロンプトで禁止している）
+  $prefixes = Get-ReviewedTestPrefixes
+  $touched  = @($files | Where-Object {
+    $p = ConvertTo-ComparablePath $_.path
+    @($prefixes | Where-Object { $p.StartsWith("$_/") }).Count -gt 0
+  } | ForEach-Object { $_.path })
+  $r.reviewed_tests         = $touched
+  $r.reviewed_tests_changed = $touched.Count
+
+  # ②レビュー範囲（省略率）
+  $scopeRel  = "$((Get-Project).docs.reviewResponses)/review-scope-$(Get-Prop $s 'story').json"
+  $scopePath = Join-Path $RepoRoot $scopeRel
+  if (-not (Test-Path $scopePath)) { return [pscustomobject]$r }
+
+  $decisions = @{}
+  try {
+    $json = (Read-Utf8 $scopePath) | ConvertFrom-Json
+    foreach ($t in @($json.targets)) {
+      if ($t.path) { $decisions[(ConvertTo-ComparablePath $t.path)] = "$($t.decision)".Trim().ToLowerInvariant() }
+    }
+  } catch {
+    Write-Host "レビュー範囲ファイルの解析に失敗しました（$scopeRel）: $_" -ForegroundColor DarkYellow
+    return [pscustomobject]$r
+  }
+
+  $totalFiles = 0; $skippedFiles = 0; $totalAdded = 0; $skippedAdded = 0; $unlisted = 0
+  foreach ($f in $files) {
+    $totalFiles++; $totalAdded += $f.added
+    $key = ConvertTo-ComparablePath $f.path
+    if (-not $decisions.ContainsKey($key)) { $unlisted++; continue }   # 未記載は review 扱い
+    if ($decisions[$key] -eq 'skip') { $skippedFiles++; $skippedAdded += $f.added }
+  }
+  $r.source         = 'review-scope'
+  $r.total_files    = $totalFiles
+  $r.skipped_files  = $skippedFiles
+  $r.total_added    = $totalAdded
+  $r.skipped_added  = $skippedAdded
+  $r.unlisted_files = $unlisted
+  [pscustomobject]$r
+}
+
 # PRのレビューを「1レビュー = 1セッション」に正規化して返す（GraphQL 1コール）。
 # REST だと /reviews と /comments を pull_request_review_id で突き合わせる必要があるうえ、
 # **createdAt（＝レビュー開始）が REST のレビューオブジェクトには無い**ため GraphQL を使う。
@@ -585,6 +771,29 @@ function Start-ReviewRound($s, $phaseId) {
   $s = Set-Prop $s 'gateCleared'     $false
   $stats = Get-DiffStats (Get-PhaseBase $s $phaseId)
   $s = Set-Prop $s 'gateDiff' $stats
+  # レビュー範囲（省略率）も diff と同じ時点で控える。gateDiff と同様、
+  # 「レビュアーが実際に見た状態」を分母にするため、ラウンド開始時に確定させる。
+  $scope = Get-ReviewScopeStats $s $phaseId
+  $s = Set-Prop $s 'gateScope' $scope
+  if ($scope) {
+    if ($scope.source -eq 'missing') {
+      # 計測の失敗で実験は止めない（Get-DiffStats と同じ方針）。ただし気づけるよう警告する。
+      Write-Host "レビュー範囲ファイル（$((Get-Project).docs.reviewResponses)/review-scope-$(Get-Prop $s 'story').json）が読めません。このラウンドの省略率は欠測になります。" -ForegroundColor DarkYellow
+    } elseif ($scope.unlisted_files -gt 0) {
+      Write-Host "レビュー範囲ファイルに未記載の変更ファイルが $($scope.unlisted_files) 件あります（保守的に review として集計します）。" -ForegroundColor DarkYellow
+    }
+    # レビュー済みテストが書き換えられていたら、省略率より先に**検証の妥当性**が疑わしい。
+    # 停止はしない（計測の都合で実験を止めない方針）が、レビュアーが見落とさないよう強く出す。
+    if ($scope.reviewed_tests_changed -gt 0) {
+      Write-Host "`n■ 警告: レビュー済みテストに差分があります（$($scope.reviewed_tests_changed) 件）" -ForegroundColor Yellow
+      foreach ($p in @($scope.reviewed_tests)) { Write-Host "    $p" -ForegroundColor Yellow }
+      Write-Host "  このフェーズはレビュー済みテストの変更・追加を禁止しています。次を必ず確認してください:" -ForegroundColor Yellow
+      Write-Host "    1) implementation-notes に変更理由が記録されているか" -ForegroundColor Yellow
+      Write-Host "    2) アサーションの緩和・削除・skip 化になっていないか（＝実装に合わせてテストを曲げていないか）" -ForegroundColor Yellow
+      Write-Host "    3) 当該差分が review-scope で review 扱いになっているか" -ForegroundColor Yellow
+      Write-Host "  不当な改変であれば -Revise で差し戻してください（記録は reviews.jsonl の scope_reviewed_tests に残ります）。" -ForegroundColor Yellow
+    }
+  }
   $s
 }
 
@@ -662,6 +871,7 @@ function Write-ReviewRound($s, $outcome) {
   }
 
   $diff     = Get-Prop $s 'gateDiff'
+  $scope    = Get-Prop $s 'gateScope'
   $comments = if ($rounds.Count -gt 0) { [int](($rounds | Measure-Object -Property Comments -Sum).Sum) } else { $null }
   $prCol    = if ($prNumber) { [int]$prNumber } else { $null }
   $row = [ordered]@{
@@ -689,6 +899,19 @@ function Write-ReviewRound($s, $outcome) {
     diff_files         = $diff.files                   # 以下 レビュー対象数（#15）
     diff_added         = $diff.added
     diff_deleted       = $diff.deleted
+    # 以下 コードレビュー省略率（提案プロセスの主指標）。
+    # 省略率 = scope_skipped_added ÷ scope_total_added（規模ベース・主）。
+    # reviewScope フェーズ以外は全て $null ＋ scope_source="none"。
+    scope_source        = $(if ($scope) { $scope.source } else { 'none' })
+    scope_total_files   = $scope.total_files
+    scope_skipped_files = $scope.skipped_files
+    scope_total_added   = $scope.total_added
+    scope_skipped_added = $scope.skipped_added
+    scope_unlisted_files= $scope.unlisted_files        # JSON未記載の変更ファイル数（データ品質のシグナル）
+    # レビュー済みテスト（②の成果物）への差分。0 でないラウンドは**中心仮説の前提が揺らいだ**印。
+    # 集計時に「テスト改変が起きたサンプル」として区別できるよう、件数とパスの両方を残す。
+    scope_reviewed_tests_changed = $scope.reviewed_tests_changed
+    scope_reviewed_tests         = $scope.reviewed_tests
   }
   Add-DataRow $ReviewsName $row
 
@@ -697,6 +920,14 @@ function Write-ReviewRound($s, $outcome) {
     $row.round, $phaseId, $shown, $source, $row.comments, $outcome) -ForegroundColor DarkGray
   if ($source -eq 'missing') {
     Write-Host "  ※このラウンドはレビュー時間が欠測（review_ms=null）です。次回は -Review でPRを開いてください。" -ForegroundColor DarkYellow
+  }
+  if ($scope -and $scope.source -eq 'review-scope' -and $scope.total_added -gt 0) {
+    Write-Host ("  レビュー省略率: {0:P1} ({1}/{2} 追加行 / skip {3}/{4} files / 未記載 {5})" -f `
+      ($scope.skipped_added / $scope.total_added), $scope.skipped_added, $scope.total_added, `
+      $scope.skipped_files, $scope.total_files, $scope.unlisted_files) -ForegroundColor DarkGray
+  }
+  if ($scope -and $scope.reviewed_tests_changed -gt 0) {
+    Write-Host "  ※このラウンドはレビュー済みテストに $($scope.reviewed_tests_changed) 件の差分がありました（集計時に要確認）。" -ForegroundColor DarkYellow
   }
 
   Set-Prop $s 'roundClosed' $true
@@ -853,6 +1084,37 @@ function Ensure-PR($s) {
   }
 }
 
+# ===========================================================================
+#  done 時の最終計測（受入条件充足率 → 集計CSV）
+# ---------------------------------------------------------------------------
+#  全ゲートを閉じて `done` になる瞬間に自動実行する。別コマンドにすると
+#  「サンプルを取り終えた達成感で叩き忘れ、品質側の主指標だけ丸ごと欠測する」ため、
+#  レビュー時間の `-Review` と同じく**忘れられない場所**に置いている。
+#
+#  計測の失敗で実験を止めない方針に従い、ここでの例外は致命扱いしない
+#  （state は既に done。`-Verify` / `-ExportCsv` でいつでもやり直せる）。
+# ===========================================================================
+function Export-ResultCsv {
+  $script = Join-Path $RepoRoot "harness/Export-Results.ps1"
+  if (-not (Test-Path $script)) { Write-Host "集計スクリプトがありません: $script" -ForegroundColor DarkYellow; return }
+  & $script -DataDir (Get-DataDir) -RepoRoot $RepoRoot
+}
+
+function Complete-Sample($s, $agent) {
+  try {
+    Invoke-AcceptanceVerification $s $agent | Out-Null
+  } catch {
+    Write-Host "受入条件充足率の測定に失敗しました: $_" -ForegroundColor Red
+    Write-Host "  やり直す: powershell -File harness/Invoke-Process.ps1 -Verify" -ForegroundColor Red
+  }
+  try {
+    Export-ResultCsv
+  } catch {
+    Write-Host "集計CSVの出力に失敗しました: $_" -ForegroundColor Red
+    Write-Host "  やり直す: powershell -File harness/Invoke-Process.ps1 -ExportCsv" -ForegroundColor Red
+  }
+}
+
 # ---- メイン ----
 # reviews.jsonl の continued_at に使う。実処理（-Revise のAI実行など）を挟んでから記録するため、
 # 「実験者が次の操作を叩いた時刻」をここで先に控えておく。
@@ -860,6 +1122,11 @@ $script:CommandStartedAt = (Get-Date).ToString("o")
 $state = Load-State
 
 if ($Status) { Resolve-SampleId $state | Out-Null; Show-Status $state; return }
+
+# 集計CSVの再生成は state を必要としない（読むのは中央データだけ）。
+# **メインリポジトリ側から叩けること**が重要なので、state 検査より前に処理する
+# （state.json は worktree ローカルにしか無く、計測データは中央にあるため）。
+if ($ExportCsv) { Export-ResultCsv; return }
 
 if ($Init) {
   if (-not $Story) { throw "-Init には -Story が必要です。" }
@@ -895,7 +1162,20 @@ if ($Agent -and $Agent -ne $RunAgent) {
   throw "このサンプルは agent=$RunAgent で開始されています。-Agent $Agent への途中変更はできません（計測値が混合するため）。新しいサンプルを開始してください。"
 }
 
-$proc = (Read-Utf8 (Join-Path $RepoRoot "harness/processes/$($state.variant).json")) | ConvertFrom-Json
+$proc = Get-ProcessDef $state.variant
+
+# --- 受入条件充足率の測定をやり直す ---
+# done への遷移時に自動実行されるので通常は不要。判定JSONが壊れていた・サーバ起動に失敗した等で
+# 欠測になった場合の救済経路。**全フェーズを終えた後にしか意味がない**ため状態を検査する。
+if ($Verify) {
+  if ($state.status -ne "done") {
+    Write-Host "現在の状態は '$($state.status)' です。受入条件充足率は全フェーズ完了後（done）に測定します。" -ForegroundColor DarkYellow
+    Write-Host "  未完了のまま測ると『完成物の充足率』ではなくなるため実行しません。" -ForegroundColor DarkYellow
+    Show-Status $state; return
+  }
+  Complete-Sample $state $RunAgent
+  Show-Status $state; return
+}
 
 # --- レビュー開始: 空のPENDINGレビューを作り（＝開始のサーバ打刻）、PRをブラウザで開く ---
 if ($Review) {
@@ -938,6 +1218,13 @@ if ($Review) {
 
 # --- 修正フェーズ: レビュー指摘を直前フェーズに反映し、同一PRへ積む（awaiting-review を維持）---
 if ($Revise) {
+  # 救済: 本修正の導入前に最終フェーズを終えた state は、ラウンドが開いたまま done になっている。
+  # 実体は「最終ゲートのレビュー待ち」なので awaiting-review に戻して -Revise を受け付ける
+  # （閉じたラウンド＝-Continue 済みの本当の完了は対象外）。
+  if ($state.status -eq "done" -and (Get-Prop $state 'gatePhaseId') -and -not (Get-Prop $state 'roundClosed')) {
+    $state = Set-Prop $state 'status' 'awaiting-review'
+    Write-Host "最終ゲートのレビュー待ちとして扱います（status を done → awaiting-review に戻しました）。" -ForegroundColor DarkGray
+  }
   if ($state.status -ne "awaiting-review") {
     Write-Host "現在の状態は '$($state.status)' です。-Revise はレビュー後(awaiting-review)に使ってください。"; return
   }
@@ -971,7 +1258,11 @@ if ($Revise) {
     Write-Host "`n■ 修正を反映しPRを更新しました。再度レビューしてください（round $((Get-Prop $state 'reviewRound'))）。" -ForegroundColor Yellow
     Write-Host "  レビュー開始: powershell -File harness/Invoke-Process.ps1 -Review" -ForegroundColor Yellow
     Write-Host "  さらに修正: powershell -File harness/Invoke-Process.ps1 -Revise" -ForegroundColor Yellow
-    Write-Host "  次フェーズへ: powershell -File harness/Invoke-Process.ps1 -Continue" -ForegroundColor Yellow
+    if ([int]$state.phaseIndex -ge $proc.phases.Count) {
+      Write-Host "  完了させる: powershell -File harness/Invoke-Process.ps1 -Continue" -ForegroundColor Yellow
+    } else {
+      Write-Host "  次フェーズへ: powershell -File harness/Invoke-Process.ps1 -Continue" -ForegroundColor Yellow
+    }
   }
   Show-Status $state
   return
@@ -1055,6 +1346,7 @@ if ($Rollback) {
   $state = Set-Prop $state 'gateOpenedAt'    $null
   $state = Set-Prop $state 'pendingReviewId' $null
   $state = Set-Prop $state 'gateDiff'        $null
+  $state = Set-Prop $state 'gateScope'       $null
   $state = Set-Prop $state 'roundClosed'     $true
   $state = Set-Prop $state 'gateCleared'     $true   # -Revise を止めるための印（Start-ReviewRound で解除）
   Save-State $state
@@ -1068,15 +1360,17 @@ if ($Continue -and $state.status -ne "awaiting-review" -and $state.status -ne "d
   Write-Host "現在の状態は '$($state.status)' です。-Continue はレビュー後(awaiting-review)に使ってください。"; return
 }
 
-# 最終フェーズのゲート（existing の e2e-run / baseline の build）は次フェーズが無いため
-# 状態が done になる。ここで -Continue を「最後のラウンドを閉じる操作」として受け付けないと、
+# 互換経路: 最終フェーズ完了時に done へ進めていた頃の state（ラウンドが開いたまま done）を
+# 救済する。-Continue を「最後のラウンドを閉じる操作」として受け付けないと、
 # **最終成果物のレビュー時間だけが永久に欠測**する（baseline は唯一のゲートがこれに当たる）。
+# 現行フローでは最終フェーズも awaiting-review で止まるため、通常はここを通らない。
 if ($state.status -eq "done") {
   if ($Continue -and (Get-Prop $state 'gatePhaseId') -and -not (Get-Prop $state 'roundClosed')) {
     Assert-RoundSubmitted $state
     $state = Write-ReviewRound $state 'continue'
     Save-State $state
     Write-Host "`n★ 最終レビューを記録しました。全工程完了。" -ForegroundColor Green
+    Complete-Sample $state $RunAgent
   } else {
     Write-Host "全フェーズ完了済みです。"
   }
@@ -1087,11 +1381,27 @@ if ($state.status -eq "done") {
 if ($Continue) {
   Assert-RoundSubmitted $state
   $state = Write-ReviewRound $state 'continue'
+  # 最終フェーズのゲートを閉じた＝ここで初めて全工程完了。
+  # （最終フェーズ実行時点では -Revise を受け付けるため awaiting-review のままにしてある）
+  if ([int]$state.phaseIndex -ge $proc.phases.Count) {
+    $state = Set-Prop $state 'status' 'done'
+    Save-State $state
+    Write-Host "`n★ 最終レビューを記録しました。全工程完了。" -ForegroundColor Green
+    # done の瞬間に品質側の主指標（受入条件充足率）を測り、集計CSVを再生成する。
+    Complete-Sample $state $RunAgent
+    Show-Status $state; return
+  }
   Save-State $state
 }
 
 # 次に実行するフェーズ
-$idx   = [int]$state.phaseIndex
+$idx = [int]$state.phaseIndex
+# 全フェーズ消化済みなのにここへ来る＝最終ゲートが開いたまま -Continue 以外で叩かれた場合。
+# 添字が範囲外になるため、案内して止める（そのまま進むと $phase が null になる）。
+if ($idx -ge $proc.phases.Count) {
+  Write-Host "全フェーズ実行済みです。最終レビューの指摘は -Revise で反映し、完了させるときは -Continue を使ってください。"
+  Show-Status $state; return
+}
 $phase = $proc.phases[$idx]
 
 # 巻き戻し先となる「このフェーズ実行直前のHEAD」を控える（-Rollback がここへ reset する）。
@@ -1110,16 +1420,28 @@ if ($phase.gate) {
 
 # 状態更新
 if ($idx + 1 -ge $proc.phases.Count) {
-  $state.phaseIndex = $idx + 1; $state.status = "done"
-  # 最終フェーズにもゲートがある（＝人が最終成果物を見る）ならラウンドを開く。
-  # 閉じるのは -Continue（上の done 分岐）。
-  if ($phase.gate) { $state = Start-ReviewRound $state $phase.id }
-  Save-State $state
-  Write-Host "`n★ 全工程完了。" -ForegroundColor Green
+  $state.phaseIndex = $idx + 1
   if ($phase.gate) {
+    # 最終フェーズにもゲートがある（＝人が最終成果物を見る）。
+    # ここで done にすると `-Revise` が status チェックで弾かれ、**最終ゲートの指摘だけ反映できない**。
+    # そのため他のゲートと同じ awaiting-review で止め、done にするのは
+    # 最終ラウンドを閉じる -Continue（上の「全フェーズ消化済み」分岐）に一本化する。
+    $state.status = "awaiting-review"
+    # 修正フェーズが「この出力以降のコメントだけ」を拾えるよう基準時刻を刻む（途中ゲートと同じ）。
+    $state = Set-Prop $state 'lastRevisedAt' ((Get-Date).ToString("o"))
+    $state = Start-ReviewRound $state $phase.id
+    Save-State $state
+    Write-Host "`n★ 全フェーズ実行完了。最終レビューを残しています。" -ForegroundColor Green
     Write-Host "  最終成果物のPRをレビューしてください（レビュー時間を計測します）。" -ForegroundColor Yellow
     Write-Host "  レビュー開始: powershell -File harness/Invoke-Process.ps1 -Review" -ForegroundColor Yellow
-    Write-Host "  GitHubで Submit review 後: powershell -File harness/Invoke-Process.ps1 -Continue" -ForegroundColor Yellow
+    Write-Host "  指摘を反映: powershell -File harness/Invoke-Process.ps1 -Revise" -ForegroundColor Yellow
+    Write-Host "  指摘対応が済んだら完了: powershell -File harness/Invoke-Process.ps1 -Continue" -ForegroundColor Yellow
+  } else {
+    $state.status = "done"
+    Save-State $state
+    Write-Host "`n★ 全工程完了。" -ForegroundColor Green
+    # ゲート無しで完了する構成（将来の変種）でも品質側の主指標を取りこぼさない。
+    Complete-Sample $state $RunAgent
   }
 } else {
   $state.phaseIndex = $idx + 1; $state.status = "awaiting-review"
@@ -1132,6 +1454,12 @@ if ($idx + 1 -ge $proc.phases.Count) {
   if ($phase.gate) {
     $d = Get-Prop $state 'gateDiff'
     if ($d) { Write-Host ("  レビュー対象: {0} files (+{1} / -{2})" -f $d.files, $d.added, $d.deleted) -ForegroundColor DarkGray }
+    $sc = Get-Prop $state 'gateScope'
+    if ($sc -and $sc.source -eq 'review-scope') {
+      Write-Host ("  うち skip 申告: {0} files / +{1} 行（残り {2} files が要レビュー）" -f `
+        $sc.skipped_files, $sc.skipped_added, ($sc.total_files - $sc.skipped_files)) -ForegroundColor DarkGray
+      Write-Host ("  → review-scope-$($state.story).md で skip 判定の妥当性を確認してから、review 対象のみコードを読んでください。") -ForegroundColor DarkGray
+    }
     Write-Host "  レビュー開始: powershell -File harness/Invoke-Process.ps1 -Review   ← 必ずこれでPRを開く（開始打刻）" -ForegroundColor Yellow
   }
   Write-Host "  指摘を反映: powershell -File harness/Invoke-Process.ps1 -Revise" -ForegroundColor Yellow

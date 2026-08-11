@@ -76,12 +76,16 @@ function New-AgentResult($agent) {
 
 # stdin へプロンプトを流し、stream-json（1行1JSON）を受けながら進捗表示と計数を行う。
 function Invoke-ClaudeAgent {
-  param([string]$Prompt, [string]$Model, [ValidateSet('edit','all')][string]$Permission, $Limits)
+  param([string]$Prompt, [string]$Model, [ValidateSet('edit','all')][string]$Permission, $Limits, [string]$McpConfig)
 
   $permMode = if ($Permission -eq 'all') { 'bypassPermissions' } else { 'acceptEdits' }
   $cliArgs  = @('-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', $permMode)
   if ($Model)           { $cliArgs += @('--model', $Model) }
   if ($Limits.maxTurns) { $cliArgs += @('--max-turns', "$($Limits.maxTurns)") }
+  # MCP は「計測工程（受入検証）だけ」で使う。--strict-mcp-config を必ず併記して、
+  # 実行環境（ユーザ設定 / .mcp.json）に入っている他のMCPサーバを混入させない
+  # ＝どのマシンで回しても検証エージェントが持つツールが同一になる。
+  if ($McpConfig) { $cliArgs += @('--mcp-config', $McpConfig, '--strict-mcp-config') }
 
   $r      = New-AgentResult 'claude'
   $sw     = [System.Diagnostics.Stopwatch]::StartNew()
@@ -173,7 +177,7 @@ function Get-CopilotOtelSummary([string]$path) {
 }
 
 function Invoke-CopilotAgent {
-  param([string]$Prompt, [string]$Model, [ValidateSet('edit','all')][string]$Permission, $Limits)
+  param([string]$Prompt, [string]$Model, [ValidateSet('edit','all')][string]$Permission, $Limits, [string]$McpConfig)
 
   # 権限の対応付け（実測ベース）:
   #   Claude acceptEdits        ⇔ --allow-all-tools --deny-tool=shell（編集は自動 / シェルは拒否）
@@ -188,6 +192,12 @@ function Invoke-CopilotAgent {
              @('--no-ask-user', '--output-format', 'json', '--no-color')
   if ($Model)               { $cliArgs += @('--model', $Model) }
   if ($Limits.maxAiCredits) { $cliArgs += @('--max-ai-credits', "$($Limits.maxAiCredits)") }
+  # Copilot 側の MCP 追加投入。`@<path>` でファイル指定になる（Claude の --mcp-config 相当）。
+  # 注意: Claude の --strict-mcp-config に相当するフラグが無く、これは
+  # ~/.copilot/mcp-config.json への**追加**になる。ユーザ環境に他のMCPサーバが登録されていると
+  # 検証エージェントの持つツールがマシンによって変わるため、Copilot で計測する場合は
+  # ~/.copilot/mcp-config.json を空にしておくこと（harness/README.md「受入条件充足率」参照）。
+  if ($McpConfig)           { $cliArgs += @('--additional-mcp-config', "@$McpConfig") }
 
   $otelPath = Join-Path $env:TEMP ("copilot-otel-{0}.jsonl" -f [guid]::NewGuid().ToString('N'))
   $prevOtel = $env:COPILOT_OTEL_FILE_EXPORTER_PATH
@@ -274,16 +284,18 @@ function Invoke-CopilotAgent {
 # 使うエージェントに関わらず同じ形の計測レコードを返す唯一の入口。
 #   -Permission edit … 編集は自動承認・シェルは不可（Claude acceptEdits 相当）
 #   -Permission all  … すべて自動承認（Claude bypassPermissions 相当）
+#   -McpConfig       … MCPサーバ定義JSONのパス（受入検証フェーズのみ指定。開発フェーズでは常に未指定）
 function Invoke-Agent {
   param(
     [Parameter(Mandatory)][ValidateSet('claude','copilot')][string]$Agent,
     [Parameter(Mandatory)][string]$Prompt,
     [string]$Model,
     [ValidateSet('edit','all')][string]$Permission = 'edit',
-    $Limits = @{}
+    $Limits = @{},
+    [string]$McpConfig
   )
   switch ($Agent) {
-    'claude'  { Invoke-ClaudeAgent  -Prompt $Prompt -Model $Model -Permission $Permission -Limits $Limits }
-    'copilot' { Invoke-CopilotAgent -Prompt $Prompt -Model $Model -Permission $Permission -Limits $Limits }
+    'claude'  { Invoke-ClaudeAgent  -Prompt $Prompt -Model $Model -Permission $Permission -Limits $Limits -McpConfig $McpConfig }
+    'copilot' { Invoke-CopilotAgent -Prompt $Prompt -Model $Model -Permission $Permission -Limits $Limits -McpConfig $McpConfig }
   }
 }

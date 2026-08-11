@@ -1,0 +1,35 @@
+{
+  "variant": "proposed",
+  "description": "提案プロセス: 要件定義⇒E2E/IF/CT設計&テストコード作成&レビュー⇒テスト起点実装&ユニットテスト&差分レビュー⇒E2E実施⇒完了",
+  "phases": [
+    {
+      "id": "requirements",
+      "name": "要件定義",
+      "prompt": "01-requirements.md",
+      "skill": "requirements-analyst",
+      "gate": true
+    },
+    {
+      "id": "test-design",
+      "name": "E2E/IF/コンポーネントテスト設計＆テストコード作成＆レビュー",
+      "prompt": "02-test-first-design.md",
+      "skill": "test-engineer",
+      "gate": true
+    },
+    {
+      "id": "implementation",
+      "name": "テスト起点実装＆ユニットテスト＆差分レビュー",
+      "prompt": "03-implementation.md",
+      "skill": "backend-architect",
+      "gate": true,
+      "reviewScope": true
+    },
+    {
+      "id": "e2e-run",
+      "name": "E2Eテスト実施",
+      "prompt": "04-e2e-run.md",
+      "skill": "test-engineer",
+      "gate": true
+    }
+  ]
+}
