@@ -1,11 +1,7 @@
 {
   "name": "umami",
   "setup": [
-    "pnpm install --frozen-lockfile",
-    "cmd /c copy /Y .env.example .env",
-    "pnpm run build-db-client",
-    "docker compose -f docker-compose.dev.yml up -d --wait",
-    "pnpm exec prisma migrate reset --force --skip-generate --skip-seed"
+    "pnpm install"
   ],
   "docs": {
     "requirements": "docs/requirements",
