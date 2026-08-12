@@ -36,8 +36,13 @@ export async function loginViaApi(
   };
 }
 
-export async function loginPage(page: Page, request: APIRequestContext): Promise<Auth> {
-  const auth = await loginViaApi(request);
+export async function loginPage(
+  page: Page,
+  request: APIRequestContext,
+  username = umamiUser.username,
+  password = umamiUser.password,
+): Promise<Auth> {
+  const auth = await loginViaApi(request, username, password);
 
   await page.addInitScript(token => {
     window.localStorage.setItem('umami.auth', JSON.stringify(token));
@@ -79,6 +84,28 @@ export async function deleteWebsite(request: APIRequestContext, auth: Auth, webs
   expect(response.status()).toBe(200);
 }
 
+// Like addWebsite, but returns the created website body (including its id) and
+// accepts arbitrary extra fields (e.g. notes) for tests that need the created id
+// or need to seed additional attributes at creation time.
+export async function createWebsite(
+  request: APIRequestContext,
+  auth: Auth,
+  data: Record<string, any>,
+) {
+  const response = await request.post('/api/websites', {
+    headers: authHeaders(auth),
+    data: {
+      id: uuid(),
+      createdBy: umamiUser.id,
+      ...data,
+    },
+  });
+
+  expect(response.status()).toBe(200);
+
+  return response.json();
+}
+
 export async function addUser(
   request: APIRequestContext,
   auth: Auth,
@@ -92,6 +119,8 @@ export async function addUser(
   });
 
   expect(response.status()).toBe(200);
+
+  return response.json();
 }
 
 export async function deleteUser(request: APIRequestContext, auth: Auth, userId: string) {
@@ -109,6 +138,8 @@ export async function addTeam(request: APIRequestContext, auth: Auth, name: stri
   });
 
   expect(response.status()).toBe(200);
+
+  return response.json();
 }
 
 export async function deleteTeam(request: APIRequestContext, auth: Auth, teamId: string) {
