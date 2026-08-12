@@ -234,7 +234,7 @@ test.describe('Website notes (US-201) API tests', () => {
         data: { notes: 'attempted unauthorized change' },
       });
 
-      expect([401, 403]).toContain(response.status());
+      expect(response.status()).toBe(401);
 
       // The website's notes remain unchanged.
       const getResponse = await request.get(`/api/websites/${websiteId}`, {
