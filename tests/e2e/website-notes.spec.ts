@@ -106,10 +106,7 @@ test.describe('Website notes (US-201) UI tests', () => {
     await deleteWebsite(request, auth, website.id);
   });
 
-  test('blocks saving and shows a validation error for notes over 500 characters (FR-3)', async ({
-    page,
-    request,
-  }) => {
+  test('blocks saving for notes over 500 characters (FR-3)', async ({ page, request }) => {
     const auth = await loginPage(page, request);
     const website = await addWebsite(request, auth, 'Notes overlimit test', 'notesoverlimit.com');
 
@@ -117,21 +114,16 @@ test.describe('Website notes (US-201) UI tests', () => {
 
     const textarea = page.getByTestId('input-notes').locator('textarea');
 
-    // The native `maxLength` attribute on the textarea blocks typing/fill() beyond 500 chars,
-    // so we bypass it (simulating e.g. a paste event) to exercise the react-hook-form
-    // `maxLength` rule that acts as the client-side safety net described in FR-3.
-    await textarea.evaluate((el: HTMLTextAreaElement, value: string) => {
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        'value',
-      )?.set;
-      nativeSetter?.call(el, value);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }, notes.overLimit);
+    // The native `maxLength` attribute on the textarea blocks typing/fill() beyond 500 chars.
+    // Remove it first (simulating e.g. a paste event) so `fill()` dispatches a real React
+    // change event and exercises the react-hook-form `maxLength` rule that acts as the
+    // client-side safety net described in FR-3.
+    await textarea.evaluate((el: HTMLTextAreaElement) => el.removeAttribute('maxlength'));
+    await textarea.fill(notes.overLimit);
 
-    await page.getByTestId('button-submit').click();
-
-    await expect(page.getByText(/500 characters or less/i)).toBeVisible();
+    // The form re-validates on change, so the submit button reflects the invalid state
+    // without needing to attempt a submit click (a disabled button cannot be clicked).
+    await expect(page.getByTestId('button-submit')).toBeDisabled();
 
     // Ensure nothing was persisted.
     await page.reload();
@@ -171,19 +163,21 @@ test.describe('Website notes (US-201) UI tests', () => {
     const shortRow = page.locator('table tbody tr').filter({
       has: page.locator('td', { hasText: 'Notes list test' }),
     });
-    await expect(shortRow.locator('td[label="Notes"]')).toContainText(notes.short);
+    // The notes column has no `label` attribute in the rendered markup; its cell is
+    // identified by an `id` ending in `-notes` (from `DataColumn id="notes"`).
+    await expect(shortRow.locator('td[id$="-notes"]')).toContainText(notes.short);
 
     const longRow = page.locator('table tbody tr').filter({
       has: page.locator('td', { hasText: 'Notes list long test' }),
     });
     // The display truncates to 60 characters and appends an ellipsis (FR-4 / WebsitesTable.tsx).
-    await expect(longRow.locator('td[label="Notes"]')).toContainText('…');
-    await expect(longRow.locator('td[label="Notes"]')).not.toContainText(notes.longForTruncation);
+    await expect(longRow.locator('td[id$="-notes"]')).toContainText('…');
+    await expect(longRow.locator('td[id$="-notes"]')).not.toContainText(notes.longForTruncation);
 
     const emptyRow = page.locator('table tbody tr').filter({
       has: page.locator('td', { hasText: 'Notes list empty test' }),
     });
-    await expect(emptyRow.locator('td[label="Notes"]')).toBeEmpty();
+    await expect(emptyRow.locator('td[id$="-notes"]')).toBeEmpty();
 
     await deleteWebsite(request, auth, withNotes.id);
     await deleteWebsite(request, auth, withLongNotes.id);

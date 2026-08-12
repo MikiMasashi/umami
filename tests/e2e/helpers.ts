@@ -66,13 +66,29 @@ export async function addWebsite(
       createdBy: umamiUser.id,
       name,
       domain,
-      ...(notes !== undefined && { notes }),
     },
   });
 
   expect(response.status()).toBe(200);
 
-  return response.json();
+  const website = await response.json();
+
+  // The create endpoint (`POST /api/websites`) does not accept `notes` (see
+  // `docs/specifications/api-specification.md` §1); notes can only be set via the
+  // update endpoint (`POST /api/websites/:websiteId`). Apply it here so callers can
+  // still request a "created with notes" fixture in one call.
+  if (notes !== undefined) {
+    const updateResponse = await request.post(`/api/websites/${website.id}`, {
+      headers: authHeaders(auth),
+      data: { notes },
+    });
+
+    expect(updateResponse.status()).toBe(200);
+
+    return updateResponse.json();
+  }
+
+  return website;
 }
 
 export async function deleteWebsite(request: APIRequestContext, auth: Auth, websiteId: string) {
