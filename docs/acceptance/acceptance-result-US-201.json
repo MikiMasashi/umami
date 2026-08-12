@@ -1,0 +1,88 @@
+{
+  "story": "US-201",
+  "baseUrl": "http://localhost:3000",
+  "results": [
+    {
+      "id": "AC-1",
+      "criterion": "ウェブサイトにメモを保持する項目が永続化層（prisma/schema.prisma の Website）に追加され、対応するマイグレーションが prisma/migrations/ に存在する。既存レコードは NULL/空で移行できる（既存データを壊さない）。",
+      "verdict": "satisfied",
+      "steps": [
+        "prisma/schema.prisma を開き model Website のフィールド定義を確認",
+        "prisma/migrations/21_add_website_notes/migration.sql の内容を確認"
+      ],
+      "expected": "Website モデルに notes 相当のカラムが追加され、対応するマイグレーションファイルが存在し、既存行を壊さない形（NULL許容）で追加される",
+      "actual": "schema.prisma の model Website に `notes String? @db.VarChar(500)` が追加されており（Optional=NULL許容）、prisma/migrations/21_add_website_notes/migration.sql に `ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);` が存在することを確認した。ADD COLUMN はデフォルトで既存行に NULL を設定するため既存データは壊れない。",
+      "evidence": "schema.prisma: 'notes     String?   @db.VarChar(500)'; migration.sql: 'ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);'"
+    },
+    {
+      "id": "AC-2",
+      "criterion": "ウェブサイト設定の詳細画面でメモを入力して保存でき、ページを再読み込みしても保存内容が表示される。",
+      "verdict": "blocked",
+      "steps": [
+        "http://localhost:3000/login を開く",
+        "admin / umami でログインを試行（POST /api/auth/login）",
+        "ウェブサイト設定詳細画面への遷移を試行"
+      ],
+      "expected": "ログイン後、対象ウェブサイトの設定詳細画面でメモを入力・保存し、リロード後も値が保持されて表示される",
+      "actual": "ログインAPI（POST /api/auth/login）が HTTP 500 を返し、レスポンス本文に 'Error: DATABASE_URL is not set.' というサーバーエラーが含まれていた。ログインができないため、設定詳細画面へ到達できず、メモの入力・保存・再読み込み確認を実機で行えなかった。",
+      "evidence": "POST /api/auth/login -> 500, body: '{\"props\":{\"pageProps\":{\"statusCode\":500,...}},...,\"err\":{\"name\":\"Error\",\"source\":\"server\",\"message\":\"DATABASE_URL is not set.\"}}'"
+    },
+    {
+      "id": "AC-3",
+      "criterion": "ウェブサイト更新 API（POST /api/websites/[websiteId]）がメモを受け付け、保存後の値をレスポンスに含む。他の項目（name / domain 等）を同時に更新しても互いを壊さない。",
+      "verdict": "blocked",
+      "steps": [
+        "POST /api/websites/{id} に notes を含むボディで未認証リクエストを送信し応答を確認",
+        "認証済みセッションでの検証を試みるためログインを試行"
+      ],
+      "expected": "notes を含むリクエストが受理され、レスポンスに保存後の notes / name / domain が正しく含まれる",
+      "actual": "認証の有無に関わらず、対象APIは HTTP 500 'DATABASE_URL is not set.' を返した。データベース未接続のため、認可チェックやメモ保存処理そのものに到達できず、正常応答（保存結果含む）を確認できなかった。",
+      "evidence": "POST /api/websites/00000000-0000-0000-0000-000000000000 (未認証) -> 500, body: 'Error: DATABASE_URL is not set.'"
+    },
+    {
+      "id": "AC-4",
+      "criterion": "500文字を超えるメモは保存されず、API は 400 系エラーを返す（UI 側でもエラーが分かる）。500文字ちょうどは保存できる。",
+      "verdict": "blocked",
+      "steps": [
+        "ログインを試行し、設定詳細画面のメモ欄に501文字/500文字を入力して保存操作を試行"
+      ],
+      "expected": "501文字入力時は保存されず400系エラー、UIでエラー表示。500文字ちょうどは保存できる",
+      "actual": "ログインができない（DATABASE_URL未設定によるサーバーエラー）ため、設定詳細画面のメモ欄に到達できず、文字数境界の実機確認ができなかった。",
+      "evidence": "同上（AC-2, AC-3 と同一の DATABASE_URL エラーによりブロック）"
+    },
+    {
+      "id": "AC-5",
+      "criterion": "ウェブサイト一覧でメモが確認できる。メモ未設定のサイトには何も表示されない（null / undefined などがそのまま出ない）。",
+      "verdict": "blocked",
+      "steps": [
+        "ログインを試行し、ウェブサイト一覧画面への遷移を試行"
+      ],
+      "expected": "一覧画面でメモが表示され、未設定サイトには null/undefined 等が表示されない",
+      "actual": "ログインができない（DATABASE_URL未設定によるサーバーエラー）ため、ウェブサイト一覧画面に到達できず、実機で表示内容を確認できなかった。",
+      "evidence": "同上（AC-2 と同一の DATABASE_URL エラーによりブロック）"
+    },
+    {
+      "id": "AC-6",
+      "criterion": "ウェブサイトを更新する権限のないユーザーはメモを更新できない（既存の canUpdateWebsite 相当の認可に従い 401/403 相当を返す）。",
+      "verdict": "blocked",
+      "steps": [
+        "権限のないユーザーでログインを試行し、対象ウェブサイトの更新APIにメモ更新リクエストを送信"
+        ],
+      "expected": "権限のないユーザーからのメモ更新リクエストは 401/403 相当のエラーになる",
+      "actual": "そもそもログイン自体が DATABASE_URL 未設定のサーバーエラーで失敗するため、権限のないユーザーのセッションを作成できず、認可チェックの挙動を実機で確認できなかった（未認証リクエストでも同じ500エラーが先に発生し、401/403との切り分けができない）。",
+      "evidence": "POST /api/websites/{id} (未認証) -> 500 'DATABASE_URL is not set.'（401/403ではなくサーバーエラーが先に発生）"
+    },
+    {
+      "id": "AC-7",
+      "criterion": "既存のユニットテスト（pnpm test）と既存 E2E（tests/e2e/website.spec.ts 等）が引き続き合格する（デグレなし）。",
+      "verdict": "blocked",
+      "steps": [
+        "リポジトリルートで `pnpm test` を実行し結果を確認",
+        "tests/e2e/website.spec.ts 相当の実機確認をブラウザ操作で試行（Playwright MCP は本セッションでツールとして提供されず利用不可。また実行環境の DATABASE_URL 未設定によりログインができないため、ブラウザでの e2e 相当確認は実施不能）"
+      ],
+      "expected": "ユニットテスト・E2E ともにデグレなく合格する",
+      "actual": "`pnpm test`（vitest）はリポジトリ内で実行し、22 test files / 102 tests すべて合格した（'Test Files 22 passed (22)', 'Tests 102 passed (102)'）ことを確認した。一方、E2E 相当の確認は、(1) 本セッションに Playwright MCP のブラウザ操作ツールが利用可能な状態で提供されておらず、(2) 実行中のアプリが DATABASE_URL 未設定によりログイン不能な状態であるため、実機で確認できなかった。ユニットテスト部分のみ確認できた状態であり、AC-7 全体としては未確認部分が残るため blocked とする。",
+      "evidence": "pnpm test 出力: 'Test Files  22 passed (22)' / 'Tests  102 passed (102)'; Playwright MCPツール呼び出し試行時のエラー: \"Tool 'mcp__playwright__browser_navigate' does not exist\"; ログイン試行時の DATABASE_URL エラー（AC-2と同一）"
+    }
+  ]
+}
