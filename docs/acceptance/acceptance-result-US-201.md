@@ -1,112 +1,131 @@
-# US-201 受入条件検証結果
+# US-201 受入検証結果（実機確認）
 
 ## 検証環境
 
-- 対象: umami（Next.js + Prisma / PostgreSQL）
-- baseURL: `http://localhost:3000`
-- 実施日時: 2026-08-13 16:40〜16:51（JST）
-- ブラウザ操作: Playwright MCP（`browser_navigate` / `browser_run_code_unsafe`（page.goto/fill/click/waitForResponse） / `browser_snapshot` / `browser_take_screenshot`）
-- 補助確認: PowerShell の `Invoke-WebRequest` / `psql` / Node.js の `pg` モジュールによるDB・API直叩き（画面操作で確認できない部分の裏取りのみ）、`pnpm test`（AC-7 のユニットテスト部分の合否確認。開発チームの E2E ランナー `playwright test` は本検証では使用していない）
-- ログイン試行アカウント: `admin` / `umami`（`harness/project.json` の `verify.notes` に記載の既定アカウント）
+- baseUrl: `http://localhost:3000`
+- 実施日時: 2026-08-13（環境の `current_datetime` 基準）
+- ブラウザ: Playwright MCP（Chromium, headless）
+- ログインユーザー: `admin` / `umami`（`docker-compose` の初期管理者アカウント）
+- 実行中コンテナ:
+  - `umami-sample-proposed-copilot-21-umami-1`（アプリ）… `docker exec` で確認したところ `/app/package.json` の `version` は `3.2.0`。イメージは `docker-compose` 定義の `ghcr.io/umami-software/umami:latest`。
+  - `umami-sample-proposed-copilot-21-db-1`（PostgreSQL 15）
 
-## 重要な環境事象（AC-2〜AC-6、AC-7のE2E部分がblockedとなった根本原因）
+## 重要な前提（検証中に判明した事実）
 
-`http://localhost:3000/api/heartbeat` は `200 {"ok":true}` を返し Next.js サーバー自体は起動しているが、
-**ログイン機能（`POST /api/auth/login`）がサーバー内部エラー（500）で機能していない**ことを実機操作で確認した。
+実行中のアプリコンテナに対して `docker exec` で `/app/prisma/schema.prisma` を確認したところ、
+**`model Website` に `notes` フィールドが存在しなかった**。同様に DB コンテナに対して
+`psql -c "\d website"` を実行したところ、`website` テーブルに `notes` 列は存在しなかった
+（列: `website_id, name, domain, reset_at, user_id, created_at, updated_at, deleted_at, created_by, team_id, recorder_enabled, replay_config` のみ）。
 
-- ブラウザで `/login` を開き `admin` / `umami` を入力してログイン → 赤字で
-  `Failed to execute 'json' on 'Response': Unexpected end of JSON input` と表示され、ログインできない。
-- `page.waitForResponse` で `POST /api/auth/login` のレスポンスを直接確認 → `status: 500`、レスポンスボディは空。
-- 原因調査（読み取り専用の診断のみ、実装・設定は一切変更していない）:
-  - `.env` の `DATABASE_URL` は `postgresql://admin:umami@localhost:5432/umami` を指している。
-  - Node.js の `pg` クライアントで `postgresql://admin:umami@localhost:5432/umami` および
-    `postgresql://umami:umami@localhost:5432/umami` の双方に接続を試みたが、いずれも
-    `password authentication failed for user "..."` で失敗した。
-  - ポート `5432` で待ち受けているのは Windows サービス `postgresql-x64-16`（ネイティブインストールのPostgreSQL）であり、
-    `pg_hba.conf` は `scram-sha-256` 認証を要求している。`docker ps -a` で確認したところ、本プロジェクト用の
-    DBコンテナ（`docker-compose.yml` で定義される `db` サービス、`POSTGRES_USER=umami` / `POSTGRES_PASSWORD=umami`）は
-    起動しておらず、同ホスト上で稼働しているのは無関係な別サンプル（`umami-sample-existing-copilot-21`）用の
-    DBコンテナ（ホストポート `5433` にマッピング）のみだった。
-  - 参考として `postgresql://umami:umami@localhost:5433/umami`（別プロジェクトのDBコンテナ）には接続でき
-    `user` テーブルの参照ができたが、これは本プロジェクトの `.env` が指す接続先ではなく、本アプリ（ポート3000で
-    稼働中の `pnpm dev` プロセス）が実際に使用しているDBではないため、判定の根拠には使用していない。
-- この問題はメモ機能の実装自体の欠陥ではなく、**検証環境のDB接続設定（`.env` の `DATABASE_URL` が実際に
-  到達可能な認証情報を指していないこと）に起因するブロッカー**と判断した。
-  実装・テストコード・設定・依存関係は一切変更していない（`docs/acceptance` 配下のみ変更）。
+一方、ローカルのソースツリー（`prisma/schema.prisma` / `prisma/migrations/21_add_website_notes/migration.sql` /
+`src/app/api/websites/[websiteId]/route.ts` / `src/app/(main)/websites/[websiteId]/settings/WebsiteEditForm.tsx` /
+`src/app/(main)/websites/WebsitesTable.tsx` 等）には notes 関連の実装が存在する。
 
-この結果、ログインを前提とする AC-2〜AC-6 の実機確認、および AC-7 の E2E 相当部分の実機確認には到達できなかった。
-AC-1（永続化層の静的確認）と AC-7 のユニットテスト部分（`pnpm test` は実行可能）のみ確認できた。
+つまり、**「起動済みでハーネスが疎通確認したアプリ」は公式配布イメージ（`umami:3.2.0`）そのままで動作しており、
+本リポジトリのソースコード上の変更（メモ機能の実装）を反映していない**。本検証は指示に従い
+「実際に動いているアプリケーションを操作して」判定するため、以下の結果は全てこの実行中インスタンスに対する
+実機確認の結果である（ソースコードを読んだ限りでの推測による `satisfied` 判定は行っていない）。
 
-## 判定表
+## AC 判定結果一覧
 
 | ID | 受入条件（要約） | verdict | 期待 | 実際 |
-|----|------------------|---------|------|------|
-| AC-1 | Website にメモ項目 + マイグレーション存在、既存データ非破壊 | **satisfied** | notes フィールドとマイグレーションファイルが存在し、nullable で既存行を壊さない | `prisma/schema.prisma` に `notes String? @db.VarChar(500)`、`prisma/migrations/21_add_website_notes/migration.sql` に `ALTER TABLE "website" ADD COLUMN "notes" VARCHAR(500);`（NOT NULL/DEFAULT無し＝既存行はNULLになり非破壊）を確認。DB接続不可のため `pnpm update-db` の実行結果そのものは未確認 |
-| AC-2 | 設定画面でメモ入力・保存・再読込後も表示 | **blocked** | ログイン後、設定画面でメモを保存・再読込確認 | ログインが 500 エラーで失敗し設定画面に到達不可 |
-| AC-3 | 更新API がメモを受け付け、他項目と共存 | **blocked** | 認証済みで POST /api/websites/[websiteId] を叩き応答確認 | ログイン不能のため有効なセッションを確立できず未確認 |
-| AC-4 | 500文字超は保存不可(400系)、500文字ちょうどは保存可 | **blocked** | メモ欄に501/500文字を入力し挙動確認 | ログイン不能のため設定画面のメモ欄に到達不可 |
-| AC-5 | 一覧でメモ確認可、未設定は null/undefined 非表示 | **blocked** | /websites 一覧のメモ列表示を確認 | ログイン不能のため一覧画面に認証済みで到達不可 |
-| AC-6 | 権限のないユーザーはメモ更新不可(401/403) | **blocked** | 非admin ユーザーでの更新試行結果を確認 | admin ですらログイン不能なため非admin検証にも到達不可 |
-| AC-7 | 既存ユニットテスト・E2E がデグレなく合格 | **blocked** | pnpm test と E2E 相当操作がともに成功 | `pnpm test` は Test Files 22 passed(22) / Tests 102 passed(102) で全件成功（notes関連テスト含む）。ただしE2E相当の実機操作（ログイン→操作）はログイン500エラーのため未確認のため、AC全体としては blocked |
+|----|----------------|---------|------|------|
+| AC-1 | Website に notes 列＋マイグレーション、既存データ非破壊 | **not-satisfied** | 実DBの `website` テーブルに `notes` 列がある | 実DB・実行中コンテナのschemaいずれにも `notes` 列/フィールドが存在しない |
+| AC-2 | 設定画面でメモ入力・保存・再読込後も表示 | **not-satisfied** | 設定画面に Notes 入力欄がある | 設定画面には Website ID / Name / Domain のみ、Notes 欄は存在しない |
+| AC-3 | 更新API がメモを受理しレスポンスに含む、他項目を壊さない | **not-satisfied** | POST レスポンスに `notes` を含む | レスポンスに `notes` キー自体が存在しない（200は返るが保存されない） |
+| AC-4 | 500字超は400エラー、500字ちょうどは保存可 | **not-satisfied** | 501文字送信で400系エラー | 501文字でも200 OK、エラーなし（notesが処理されていないため） |
+| AC-5 | 一覧でメモ確認可、未設定は非表示 | **not-satisfied** | 一覧に Notes 列がありメモが見える | 一覧テーブルは Name/Domain/Created の3列のみ、Notes列自体が無い |
+| AC-6 | 権限のないユーザーはメモ更新不可（401/403） | **blocked** | 権限なしユーザーのnotes更新が拒否される | notes機能自体が存在せず検証対象を構成できない |
+| AC-7 | 既存ユニット/E2Eテストが引き続き合格（デグレなし） | **blocked** | `pnpm test` / 既存E2Eが green | 本計測工程の制約でテストランナー実行が禁止されており確認不能 |
 
-## not-satisfied / blocked の再現手順と証跡
+## 再現手順・観測内容の詳細
 
-### AC-2〜AC-6（共通原因: ログイン不可）
+### AC-1: 永続化層（DB）確認
 
-再現手順:
-1. `http://localhost:3000/login` を開く。
-2. Username に `admin`、Password に `umami` を入力し「Login」ボタンを押す。
-3. 画面に赤字で `Failed to execute 'json' on 'Response': Unexpected end of JSON input` と表示され、ログイン画面から遷移しない（スクリーンショット: `docs/acceptance/ac2-login-failure-live.png`）。
-4. `page.waitForResponse` で確認すると `POST /api/auth/login` が `status: 500`、`body: ''`。
-5. Node.js の `pg` クライアントで `.env` の `DATABASE_URL`（`admin:umami@localhost:5432/umami`）および
-   一般的な既定値（`umami:umami@localhost:5432/umami`）の両方で直接接続を試みたが、いずれも
-   `password authentication failed` で失敗（根本原因の裏取り）。
-6. `docker ps -a` で確認すると、本プロジェクト用の `docker-compose.yml` に定義された `db` サービス
-   （`POSTGRES_USER=umami`）のコンテナは起動しておらず、ポート5432で待ち受けているのは無関係な
-   ネイティブ Windows PostgreSQL サービスだった。
+```
+docker exec umami-sample-proposed-copilot-21-umami-1 sh -c "grep -n notes /app/prisma/schema.prisma"
+→ ヒットなし（model Website / model WebsiteEvent の行のみ表示され notes は出てこない）
 
-この結果、AC-2〜AC-6 はいずれも「ログインして初めて到達できる画面・APIの挙動」を対象とするため、
-実機のブラウザ操作でこれ以上の確認に進めなかった。開発チームの E2E 実行結果（`docs/e2e/results` 等）は
-本検証の根拠として採用していない。
+docker exec umami-sample-proposed-copilot-21-db-1 psql -U umami -d umami -c "\d website"
+→ Table "public.website" の列一覧に notes なし:
+  website_id, name, domain, reset_at, user_id, created_at, updated_at,
+  deleted_at, created_by, team_id, recorder_enabled, replay_config
+```
 
-### AC-7
+ローカルソースの `prisma/schema.prisma`（69-71行付近）には
+`notes String? @db.VarChar(500)` が存在し、`prisma/migrations/21_add_website_notes/migration.sql` に
+`ALTER TABLE "website" ADD COLUMN "notes" VARCHAR(500);` が存在することも確認したが、
+**実行中のアプリ・DBには反映されていない**ため、実機での判定は not-satisfied とした。
 
-- `pnpm test` を実行し、以下の結果を得た（実行ログ抜粋）:
-  ```
-  Test Files  22 passed (22)
-       Tests  102 passed (102)
-  ```
-  この中には notes 機能に関連するテスト（`src/tests/website-notes-route.test.ts`,
-  `src/tests/website-create-notes-route.test.ts`, `src/tests/format-summarize-notes.test.ts`,
-  `src/component-tests/WebsiteSettingsPage.test.tsx`, `src/component-tests/WebsitesSettingsPage.test.tsx` 等）も含め、
-  すべて成功した。
-- 一方、`tests/e2e/website.spec.ts` 相当のシナリオ（ログイン→ウェブサイト操作）を、
-  開発チームのテストランナーではなく実機のブラウザ操作で再現しようとしたが、
-  AC-2〜AC-6 と同じログイン失敗（500エラー）により実行できなかった。
-  `playwright test`（開発チームのE2Eランナー）の実行結果を根拠に判定することは
-  本検証の制約上禁止されているため、これも実施していない。
-- ユニットテスト分は合格を確認できたが、E2E 分は実機確認に到達できなかったため、
-  AC-7 全体としては保守的に `blocked` と判定した。
+### AC-2: 設定画面での入力・保存・再読込
+
+1. `http://localhost:3000/login` で `admin` / `umami` でログイン。
+2. 「Add website」で `Test Site` / `test-site.example.com` を作成。
+3. `/websites/{id}/settings` に遷移し `browser_snapshot` で確認。
+
+観測結果（抜粋）:
+```
+- Website ID: textbox "047cdc8c-..."
+- Name: textbox "Test Site"
+- Domain: textbox "test-site.example.com"
+- button "Save" [disabled]
+```
+Notes ラベル・入力欄は表示されない。`document.body.innerHTML.includes('input-notes')` を
+`browser_evaluate` で実行した結果も `false`。
+
+### AC-3・AC-4: 更新APIの挙動
+
+ログイン後の `localStorage.getItem('umami.auth')` のトークンを使い、`browser_evaluate` から
+`fetch` で API を直接呼び出して確認（画面操作でNotes欄自体が無いため、API単体で検証）。
+
+```js
+// 通常のnotes送信
+POST /api/websites/{id}  body: { name, domain, notes: "hello world notes" }
+→ 200 OK, レスポンス body に notes キーなし
+
+// 501文字のnotes送信
+POST /api/websites/{id}  body: { name, domain, notes: "a".repeat(501) }
+→ 200 OK（エラーなし）, レスポンス body に notes キーなし
+
+// 直後の GET
+GET /api/websites/{id}
+→ 200 OK, レスポンス body に notes キーなし（保存されていないことを確認）
+```
+
+### AC-5: 一覧表示
+
+`/websites` 一覧ページを `browser_snapshot` および `browser_take_screenshot`（フルページ）で確認。
+テーブルヘッダーは `Name / Domain / Created` の3列のみで `Notes` 列が存在しない。
+一覧取得API（`GET /api/users/{userId}/websites`）のレスポンスをネットワークログから確認したところ、
+返却されるオブジェクトに `notes` フィールド自体が含まれていなかった:
+
+```json
+{"data":[{"id":"047cdc8c-...","name":"Test Site","domain":"test-site.example.com","resetAt":null,"userId":"...","teamId":null,"createdBy":"...","createdAt":"...","updatedAt":"...","deletedAt":null,"recorderEnabled":false,"replayConfig":null,"user":{...},"shareId":null}],"count":1,...}
+```
+
+### AC-6: 権限チェック（blocked の理由）
+
+AC-1〜AC-5 の結果から、実行中アプリには notes という更新対象自体が存在しない
+（API がフィールドを受理・返却せず、DB にも列が無い）ことが確認できた。
+このため「権限のないユーザーがメモを更新しようとした場合に拒否されるか」という
+検証対象そのものを実機上で構成することができず、判定に到達できなかった（blocked）。
+なお、既存の `canUpdateWebsite` に基づく Name/Domain の更新可否自体は本検証のスコープ外
+（AC-6 は notes 固有の認可を問うもの）。
+
+### AC-7: 既存テストの回帰（blocked の理由）
+
+本計測工程の指示（`npx playwright test` 等のテストランナーは使用しない、Playwright MCP による
+実機操作のみで判定する）に従い、`pnpm test` および `pnpm test:e2e`（`tests/e2e/website.spec.ts` 等）を
+実行していない。また `docs/e2e/results` の既存実行結果も本ACの根拠として採用しない方針のため、
+ブラウザ操作のみでは「既存テストスイート全体がデグレしていないか」を直接検証する手段がなく、
+判定に到達できなかった（blocked）。
 
 ## 判定に迷った点・保守的に倒した理由
 
-- **AC-1**: 受入条件は「メモ保持項目の追加」「マイグレーション存在」「既存データ非破壊」の3点。
-  最後の「既存データ非破壊」は本来 `pnpm update-db` の実行で確認する想定だったが、
-  上記の環境要因（DB認証エラー）で実行不能だった。ただし、①`schema.prisma` に該当フィールドが
-  存在すること、②マイグレーションファイルが `ADD COLUMN`（NOT NULL/DEFAULT無し）という
-  非破壊的な形で存在することは静的に確認できたため、Postgres の標準的な `ALTER TABLE ADD COLUMN`
-  の挙動（既存行は自動的にNULLになり、既存データは壊れない）を根拠に `satisfied` と判定した。
-  これは推測ではなく、確認済みのSQL文が持つ確定的な挙動に基づく判断である。
-  `update-db` を実際に実行した結果そのものは確認できていない旨をここに明記する。
-- **AC-2〜AC-6**: ログインという共通の前提が成立しないため、推測で `satisfied`/`not-satisfied` にはせず、
-  すべて `blocked` とした。
-- **AC-7**: ユニットテスト（`pnpm test`）は AC-7 の受入条件文言そのものが名指ししているため実行し、
-  結果を証跡として採用した（`playwright test` 等のE2Eランナーは本検証の制約上使用していない）。
-  E2E相当の実機確認ができなかったため、AC-7 全体としては `blocked` とした（ユニットテストのみ
-  合格しても「E2Eも引き続き合格する」という条件全体を満たしたとは断定できないため）。
-
-## 変更ファイルの確認
-
-`git status` は `docs/acceptance/acceptance-result-US-201.json`、`docs/acceptance/acceptance-result-US-201.md`、
-`docs/acceptance/ac2-login-failure-live.png` のみを新規/変更として報告しており、
-実装・テスト・設定ファイルへの変更は行っていない。
+- ローカルソースコードには notes 機能の実装（schema／マイグレーション／API／UI）が一通り揃っているように見えたが、
+  「計測は実際に動いているアプリを操作して行う」という本工程の方針に厳密に従い、ソースコードの内容を根拠に
+  `satisfied` とすることはしなかった。`docker exec` で実行中コンテナ自体のファイル・DBスキーマを直接確認し、
+  実行中インスタンスには notes 実装が一切反映されていない（公式配布イメージそのまま）ことを実証した上で
+  全て `not-satisfied` / `blocked` とした。
+- AC-6・AC-7 は「検証対象の機能／実行手段が実機上に存在しない・使用不可」という理由で `not-satisfied` ではなく
+  `blocked` とした（何かを試して「期待と異なる結果」を得たわけではなく、検証行為自体が成立しなかったため）。

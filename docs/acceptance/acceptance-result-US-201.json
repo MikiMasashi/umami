@@ -5,90 +5,89 @@
     {
       "id": "AC-1",
       "criterion": "ウェブサイトにメモを保持する項目が永続化層（prisma/schema.prisma の Website）に追加され、対応するマイグレーションが prisma/migrations/ に存在する。既存レコードは NULL/空で移行できる（既存データを壊さない）。",
-      "verdict": "satisfied",
+      "verdict": "not-satisfied",
       "steps": [
-        "prisma/schema.prisma の model Website を確認",
-        "prisma/migrations/21_add_website_notes/migration.sql を確認",
-        "DB接続不可のため pnpm run update-db の実行結果自体は確認できず、静的ファイル確認のみで判定"
+        "ローカルソース prisma/schema.prisma と prisma/migrations/21_add_website_notes/migration.sql を確認（notes VARCHAR(500) が定義されている）",
+        "実行中のコンテナ（umami-sample-proposed-copilot-21-umami-1）に対し docker exec で /app/prisma/schema.prisma を確認",
+        "実行中の DB コンテナ（umami-sample-proposed-copilot-21-db-1）に対し docker exec psql -c \"\\d website\" で実テーブル定義を確認"
       ],
-      "expected": "Website モデルに notes 相当のカラムが定義され、対応するマイグレーションファイルが存在し、既存行を破壊しない（NOT NULL/DEFAULT を強制しない）形で追加されている",
-      "actual": "prisma/schema.prisma に `notes String? @db.VarChar(500)` が定義されている。prisma/migrations/21_add_website_notes/migration.sql に `ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);` のみが存在し、NOT NULL 制約や DEFAULT 句がないため既存行は NULL のまま追加され既存データを壊さない",
-      "evidence": "schema.prisma: 'notes String? @db.VarChar(500)'; migration.sql: 'ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);'"
+      "expected": "起動中アプリが接続している実データベースの website テーブルに notes 列が存在する",
+      "actual": "実行中コンテナの /app/prisma/schema.prisma には notes フィールドが存在せず（model Website 内に notes の記載なし）、DB の website テーブルにも notes 列は存在しなかった（website_id/name/domain/reset_at/user_id/created_at/updated_at/deleted_at/created_by/team_id/recorder_enabled/replay_config のみ）。実行中コンテナは package.json のバージョンが 3.2.0 の公式配布イメージ（ghcr.io/umami-software/umami:latest）であり、ローカルソースの変更（notes 追加）が反映されていない。",
+      "evidence": "docker exec ... psql -U umami -d umami -c \"\\d website\" の出力に notes 列なし／docker exec ... grep -n notes /app/prisma/schema.prisma がヒットなし"
     },
     {
       "id": "AC-2",
       "criterion": "ウェブサイト設定の詳細画面でメモを入力して保存でき、ページを再読み込みしても保存内容が表示される。",
-      "verdict": "blocked",
+      "verdict": "not-satisfied",
       "steps": [
-        "http://localhost:3000/login を開く",
-        "Username=admin, Password=umami を入力してLoginを押す",
-        "POST /api/auth/login のレスポンスを確認"
+        "http://localhost:3000/login で admin/umami でログイン",
+        "「Add website」から Test Site (test-site.example.com) を作成",
+        "/websites/{id}/settings に遷移し、フォーム項目をスナップショットで確認"
       ],
-      "expected": "ログインに成功しダッシュボードへ遷移、ウェブサイト設定画面のメモ欄で入力・保存・再読込後の表示確認まで到達できる",
-      "actual": "POST /api/auth/login が 500 Internal Server Error を返しログインできず、画面に 'Failed to execute 'json' on 'Response': Unexpected end of JSON input' と表示された。原因はアプリのDB接続設定（.env の DATABASE_URL）が指すDBが実際には認証情報不一致で到達不能なため（詳細はmd参照）。ログイン前提が成立せず設定画面に到達できなかった",
-      "evidence": "browser_evaluate/waitForResponse: {status:500, body:''}; スクリーンショット docs/acceptance/ac2-login-failure-live.png"
+      "expected": "Website ID / Name / Domain に加えて Notes 入力欄（textarea, data-test=\"input-notes\"）が表示される",
+      "actual": "設定画面には Website ID・Name・Domain と Save ボタンのみが表示され、Notes 入力欄は存在しなかった（page.body.innerHTML.includes('input-notes') === false で確認）。",
+      "evidence": "browser_snapshot（設定ページ）: 'Website ID' / 'Name' / 'Domain' / 'Save' のみ表示、Notes ラベルなし"
     },
     {
       "id": "AC-3",
       "criterion": "ウェブサイト更新 API（POST /api/websites/[websiteId]）がメモを受け付け、保存後の値をレスポンスに含む。他の項目（name / domain 等）を同時に更新しても互いを壊さない。",
-      "verdict": "blocked",
+      "verdict": "not-satisfied",
       "steps": [
-        "ログインして有効なセッションCookieを取得する",
-        "POST /api/websites/{id} に notes と name/domain を同時送信",
-        "レスポンスに notes が含まれ、他フィールドも保持されるか確認"
+        "ログイン後の localStorage の umami.auth トークンを使い、browser_evaluate から fetch で POST /api/websites/{id} に name/domain/notes を送信",
+        "レスポンス本文を確認",
+        "続けて GET /api/websites/{id} で保存内容を再取得"
       ],
-      "expected": "認証済みリクエストで notes を含むレスポンスが返り、name/domain も意図通り更新される",
-      "actual": "ログイン不能のため有効なセッションを確立できず、認証が必要なこのAPIを実機で検証する前提が成立しなかった",
-      "evidence": "AC-2と同じログイン500エラーによりブロック"
+      "expected": "レスポンス JSON に notes: \"hello world notes\" が含まれる",
+      "actual": "POST は 200 を返したが、レスポンス JSON に notes フィールド自体が存在しなかった（id, name, domain, resetAt, userId, teamId, createdBy, createdAt, updatedAt, deletedAt, recorderEnabled, replayConfig, shareId のみ）。直後の GET でも notes は含まれず、保存もされていない。",
+      "evidence": "fetch POST /api/websites/047cdc8c-... レスポンス: {\"id\":...,\"name\":\"Test Site\",\"domain\":\"test-site.example.com\",...} に notes キーなし"
     },
     {
       "id": "AC-4",
       "criterion": "500文字を超えるメモは保存されず、API は 400 系エラーを返す（UI 側でもエラーが分かる）。500文字ちょうどは保存できる。",
-      "verdict": "blocked",
+      "verdict": "not-satisfied",
       "steps": [
-        "ログインしてウェブサイト設定画面のメモ欄に到達する",
-        "501文字・500文字のメモを入力して保存を試みる",
-        "UIのエラー表示とAPIレスポンスのステータスコードを確認"
+        "browser_evaluate から fetch で POST /api/websites/{id} に notes として 501 文字の文字列（'a'.repeat(501)）を送信",
+        "レスポンスのステータスコードと本文を確認"
       ],
-      "expected": "501文字では保存されずUI上にエラーメッセージが表示され、APIは400系を返す。500文字ちょうどは保存できる",
-      "actual": "ログイン不能のためメモ入力欄（設定画面）に認証済みで到達できず確認できなかった",
-      "evidence": "AC-2と同じログイン500エラーによりブロック"
+      "expected": "400 系のエラーレスポンスが返る（例: バリデーションエラーメッセージ）",
+      "actual": "501文字の notes を送信しても 200 OK が返り、エラーは発生しなかった（そもそも notes 自体が受理/保存されないため、文字数チェックも行われていない）。",
+      "evidence": "fetch POST body notes.length===501 -> status 200, レスポンスに notes フィールドなし・エラーなし"
     },
     {
       "id": "AC-5",
       "criterion": "ウェブサイト一覧でメモが確認できる。メモ未設定のサイトには何も表示されない（null / undefined などがそのまま出ない）。",
-      "verdict": "blocked",
+      "verdict": "not-satisfied",
       "steps": [
-        "ログインして /websites 一覧画面に到達する",
-        "メモ設定済み/未設定のサイトの表示内容を確認"
+        "/websites 一覧ページを開き、テーブルのヘッダー列とデータ行をスナップショット・フルページスクリーンショットで確認",
+        "一覧取得 API（GET /api/users/{userId}/websites）のレスポンス本文をネットワークログから確認"
       ],
-      "expected": "一覧のメモ列に設定済みメモが表示され、未設定サイトには空欄（'null'/'undefined'等の文字列は出ない）",
-      "actual": "ログイン不能のため認証済みで一覧画面に到達できず確認できなかった",
-      "evidence": "AC-2と同じログイン500エラーによりブロック"
+      "expected": "Name / Domain / Notes / Created の列があり、メモを保存したサイトはメモ（要約）が Notes 列に表示される",
+      "actual": "一覧テーブルの列は Name / Domain / Created の3列のみで Notes 列自体が存在しなかった。GET /api/users/{userId}/websites のレスポンスにも notes フィールドが含まれていなかった。",
+      "evidence": "browser_snapshot 一覧テーブルヘッダー: 'Name' / 'Domain' / 'Created' のみ／API レスポンス: {\"data\":[{\"id\":...,\"name\":\"Test Site\",\"domain\":\"test-site.example.com\",...}]} に notes キーなし"
     },
     {
       "id": "AC-6",
       "criterion": "ウェブサイトを更新する権限のないユーザーはメモを更新できない（既存の canUpdateWebsite 相当の認可に従い 401/403 相当を返す）。",
       "verdict": "blocked",
       "steps": [
-        "権限のないユーザーでログインする",
-        "対象ウェブサイトの notes 更新APIを叩き、401/403相当が返るか確認"
+        "notes フィールドが実行中アプリの API・DB・UI のいずれにも存在しないことを AC-1〜AC-5 で確認済み",
+        "権限のないユーザーで notes 更新を試みる具体的な操作対象（フィールド・エンドポイント挙動）が実行中アプリ上に存在しない"
       ],
-      "expected": "権限のないユーザーによる notes 更新リクエストは 401/403 相当のエラーになる",
-      "actual": "admin アカウントですらログインできない状態のため、権限のないユーザーでの検証にも到達できなかった",
-      "evidence": "AC-2と同じログイン500エラーによりブロック（admin ですら到達不可のため非admin検証は不可能）"
+      "expected": "権限のないユーザーが notes を更新しようとした場合に 401/403 相当が返る",
+      "actual": "実行中アプリには notes という更新対象自体が存在しない（API はフィールドを受理も返却もせず、DB にも列がない）ため、「notes 更新に対する権限チェック」という検証対象そのものを実機上で構成できず、判定に到達できなかった。",
+      "evidence": "AC-1〜AC-5 の調査結果（DB スキーマ・API レスポンス・UI のいずれにも notes 不在）"
     },
     {
       "id": "AC-7",
       "criterion": "既存のユニットテスト（pnpm test）と既存 E2E（tests/e2e/website.spec.ts 等）が引き続き合格する（デグレなし）。",
       "verdict": "blocked",
       "steps": [
-        "pnpm test を実行し結果を確認",
-        "tests/e2e/website.spec.ts 相当のシナリオ（ログイン→ウェブサイト操作）を実機のブラウザ操作で再現しようと試みる（開発チームのE2Eランナーは使用しない）"
+        "本計測工程の指示により pnpm test / pnpm test:e2e 等のテストランナーの実行は禁止されている（Playwright MCP によるブラウザ操作のみで検証する方針のため）",
+        "docs/e2e/results 配下の既存実行結果も本 AC の根拠として採用しない方針のため参照していない"
       ],
-      "expected": "ユニットテストが全件合格し、かつE2Eに相当する操作（ログイン→設定変更等）も実機で再現できる",
-      "actual": "pnpm test は Test Files 22 passed(22) / Tests 102 passed(102) で全件合格を確認した。しかし E2E 相当の実機操作はログインが500エラーで失敗するため到達できず確認できなかった。ユニットテストのみの合格をもって受入条件全体（E2Eも含む）を満たしたとは判定できないため、保守的に blocked とした",
-      "evidence": "pnpm test 出力: 'Test Files  22 passed (22)' / 'Tests  102 passed (102)'; ただしE2E相当操作はAC-2と同じログイン500エラーで未到達"
+      "expected": "pnpm test と既存 E2E（tests/e2e/website.spec.ts 等）が全てパスする",
+      "actual": "本工程のツール制約（テストランナー実行禁止）により、pnpm test / pnpm test:e2e を実行して合否を確認することができなかった。ブラウザ操作のみでは「既存テストスイート全体が回帰していないか」を直接検証する手段がないため、判定に到達できなかった。",
+      "evidence": "該当なし（テスト実行が制約により未実施）"
     }
   ]
 }
