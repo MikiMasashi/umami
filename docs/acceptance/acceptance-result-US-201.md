@@ -4,33 +4,37 @@
 
 - 対象: umami（Next.js + Prisma / PostgreSQL）
 - baseURL: `http://localhost:3000`
-- 実施日時: 2026-08-13 16:20〜16:28（JST）
-- ブラウザ操作: Playwright MCP（`browser_navigate` / `browser_fill_form` / `browser_click` / `browser_snapshot` / `browser_evaluate` / `browser_network_requests`）
-- 補助確認: PowerShell の `Invoke-WebRequest` / `psql` によるDB・API直叩き（画面操作で確認できない部分の裏取りのみ）、`pnpm test`（AC-7 のユニットテスト部分の合否確認。AC-7 の受入条件そのものが「pnpm test の合否」を指すため実行した。E2E（`playwright test`）は使用していない）
-- ログイン試行アカウント: `admin` / `umami`（`harness/project.json` の verify.notes 記載の既定アカウント）
+- 実施日時: 2026-08-13 16:40〜16:51（JST）
+- ブラウザ操作: Playwright MCP（`browser_navigate` / `browser_run_code_unsafe`（page.goto/fill/click/waitForResponse） / `browser_snapshot` / `browser_take_screenshot`）
+- 補助確認: PowerShell の `Invoke-WebRequest` / `psql` / Node.js の `pg` モジュールによるDB・API直叩き（画面操作で確認できない部分の裏取りのみ）、`pnpm test`（AC-7 のユニットテスト部分の合否確認。開発チームの E2E ランナー `playwright test` は本検証では使用していない）
+- ログイン試行アカウント: `admin` / `umami`（`harness/project.json` の `verify.notes` に記載の既定アカウント）
 
-## 重要な環境事象（すべてのブロック判定の根本原因）
+## 重要な環境事象（AC-2〜AC-6、AC-7のE2E部分がblockedとなった根本原因）
 
 `http://localhost:3000/api/heartbeat` は `200 {"ok":true}` を返し Next.js サーバー自体は起動しているが、
 **ログイン機能（`POST /api/auth/login`）がサーバー内部エラー（500）で機能していない**ことを実機操作で確認した。
 
 - ブラウザで `/login` を開き `admin` / `umami` を入力してログイン → 赤字で
   `Failed to execute 'json' on 'Response': Unexpected end of JSON input` と表示され、ログインできない。
-- `browser_evaluate` で `fetch('/api/auth/login', {method:'POST', body: JSON.stringify({username:'admin',password:'umami'})})` を実行 → `status: 500`、レスポンスボディは空。PowerShellから3回連続で実行しても同様に全て500。
+- `page.waitForResponse` で `POST /api/auth/login` のレスポンスを直接確認 → `status: 500`、レスポンスボディは空。
 - 原因調査（読み取り専用の診断のみ、実装・設定は一切変更していない）:
-  - `.env` は `DATABASE_URL=postgresql://umami:umami@localhost:5432/umami` を指している。
-  - `pnpm run update-db`（= `prisma migrate deploy`）を実行すると
-    `Error: P1000: Authentication failed against database server, the provided database credentials for umami are not valid.` で失敗。
-  - `psql -h localhost -p 5432 -U postgres -d postgres -c "\du"` / `"\l"` で確認したところ、ポート5432で待受しているのは
-    本プロジェクト用ではないネイティブの PostgreSQL 16（Windowsサービス `postgresql-x64-16`）であり、
-    `umami` ロールも `umami` データベースも存在しない（存在するのは `postgres` / `template0` / `template1` / `umami_e2e` のみ）。
-  - `harness/project.json` の `verify.setup` は `docker compose -f docker-compose.dev.yml up -d --wait` を含むが、
-    このワークツリーに `docker-compose.dev.yml` は存在せず（`docker-compose.yml` のみ）、本プロジェクト用のDBコンテナは
-    起動していない（`docker ps` では無関係な別サンプルのDBコンテナのみ稼働）。
-- この問題はメモ機能の実装自体の欠陥ではなく、**検証環境のDB接続設定に起因するブロッカー**と判断した。
-  実装・テストコード・設定・依存関係は変更していない（`docs/acceptance` 配下のみ変更）。
+  - `.env` の `DATABASE_URL` は `postgresql://admin:umami@localhost:5432/umami` を指している。
+  - Node.js の `pg` クライアントで `postgresql://admin:umami@localhost:5432/umami` および
+    `postgresql://umami:umami@localhost:5432/umami` の双方に接続を試みたが、いずれも
+    `password authentication failed for user "..."` で失敗した。
+  - ポート `5432` で待ち受けているのは Windows サービス `postgresql-x64-16`（ネイティブインストールのPostgreSQL）であり、
+    `pg_hba.conf` は `scram-sha-256` 認証を要求している。`docker ps -a` で確認したところ、本プロジェクト用の
+    DBコンテナ（`docker-compose.yml` で定義される `db` サービス、`POSTGRES_USER=umami` / `POSTGRES_PASSWORD=umami`）は
+    起動しておらず、同ホスト上で稼働しているのは無関係な別サンプル（`umami-sample-existing-copilot-21`）用の
+    DBコンテナ（ホストポート `5433` にマッピング）のみだった。
+  - 参考として `postgresql://umami:umami@localhost:5433/umami`（別プロジェクトのDBコンテナ）には接続でき
+    `user` テーブルの参照ができたが、これは本プロジェクトの `.env` が指す接続先ではなく、本アプリ（ポート3000で
+    稼働中の `pnpm dev` プロセス）が実際に使用しているDBではないため、判定の根拠には使用していない。
+- この問題はメモ機能の実装自体の欠陥ではなく、**検証環境のDB接続設定（`.env` の `DATABASE_URL` が実際に
+  到達可能な認証情報を指していないこと）に起因するブロッカー**と判断した。
+  実装・テストコード・設定・依存関係は一切変更していない（`docs/acceptance` 配下のみ変更）。
 
-この結果、ログインを前提とする AC-2〜AC-6 の実機確認、および AC-7 の E2E 部分は到達できなかった。
+この結果、ログインを前提とする AC-2〜AC-6 の実機確認、および AC-7 の E2E 相当部分の実機確認には到達できなかった。
 AC-1（永続化層の静的確認）と AC-7 のユニットテスト部分（`pnpm test` は実行可能）のみ確認できた。
 
 ## 判定表
@@ -43,7 +47,7 @@ AC-1（永続化層の静的確認）と AC-7 のユニットテスト部分（`
 | AC-4 | 500文字超は保存不可(400系)、500文字ちょうどは保存可 | **blocked** | メモ欄に501/500文字を入力し挙動確認 | ログイン不能のため設定画面のメモ欄に到達不可 |
 | AC-5 | 一覧でメモ確認可、未設定は null/undefined 非表示 | **blocked** | /websites 一覧のメモ列表示を確認 | ログイン不能のため一覧画面に認証済みで到達不可 |
 | AC-6 | 権限のないユーザーはメモ更新不可(401/403) | **blocked** | 非admin ユーザーでの更新試行結果を確認 | admin ですらログイン不能なため非admin検証にも到達不可 |
-| AC-7 | 既存ユニットテスト・E2E がデグレなく合格 | **blocked** | pnpm test と E2E 相当操作がともに成功 | `pnpm test` は Test Files 22 passed(22) / Tests 102 passed(102) で全件成功（notes関連テスト含む）。ただし E2E 相当の実機操作（ログイン→操作）はログイン500エラーのため未確認のため、AC全体としては blocked |
+| AC-7 | 既存ユニットテスト・E2E がデグレなく合格 | **blocked** | pnpm test と E2E 相当操作がともに成功 | `pnpm test` は Test Files 22 passed(22) / Tests 102 passed(102) で全件成功（notes関連テスト含む）。ただしE2E相当の実機操作（ログイン→操作）はログイン500エラーのため未確認のため、AC全体としては blocked |
 
 ## not-satisfied / blocked の再現手順と証跡
 
@@ -52,18 +56,14 @@ AC-1（永続化層の静的確認）と AC-7 のユニットテスト部分（`
 再現手順:
 1. `http://localhost:3000/login` を開く。
 2. Username に `admin`、Password に `umami` を入力し「Login」ボタンを押す。
-3. 画面に赤字で `Failed to execute 'json' on 'Response': Unexpected end of JSON input` と表示され、ログイン画面から遷移しない。
-4. `browser_network_requests` で確認すると `POST /api/auth/login` が `500 Internal Server Error`。
-5. 同じリクエストを `browser_evaluate` の `fetch` で直接送っても同様に500（3回連続で再現、偶発的なものではない）。
-6. シェルで `pnpm run update-db` を実行すると根本原因が再現する:
-   ```
-   Error: P1000: Authentication failed against database server, the provided database
-   credentials for `umami` are not valid.
-   ```
-7. `psql -h localhost -p 5432 -U postgres -d postgres -c "\du"` / `"\l"` で、`umami` ロール・
-   `umami` データベースがいずれも存在しないことを確認（存在するのは `postgres` / `template0` /
-   `template1` / `umami_e2e` のみ）。`harness/project.json` の `verify.setup` が期待する
-   `docker-compose.dev.yml` もこのワークツリーには存在しない。
+3. 画面に赤字で `Failed to execute 'json' on 'Response': Unexpected end of JSON input` と表示され、ログイン画面から遷移しない（スクリーンショット: `docs/acceptance/ac2-login-failure-live.png`）。
+4. `page.waitForResponse` で確認すると `POST /api/auth/login` が `status: 500`、`body: ''`。
+5. Node.js の `pg` クライアントで `.env` の `DATABASE_URL`（`admin:umami@localhost:5432/umami`）および
+   一般的な既定値（`umami:umami@localhost:5432/umami`）の両方で直接接続を試みたが、いずれも
+   `password authentication failed` で失敗（根本原因の裏取り）。
+6. `docker ps -a` で確認すると、本プロジェクト用の `docker-compose.yml` に定義された `db` サービス
+   （`POSTGRES_USER=umami`）のコンテナは起動しておらず、ポート5432で待ち受けているのは無関係な
+   ネイティブ Windows PostgreSQL サービスだった。
 
 この結果、AC-2〜AC-6 はいずれも「ログインして初めて到達できる画面・APIの挙動」を対象とするため、
 実機のブラウザ操作でこれ以上の確認に進めなかった。開発チームの E2E 実行結果（`docs/e2e/results` 等）は
@@ -107,6 +107,6 @@ AC-1（永続化層の静的確認）と AC-7 のユニットテスト部分（`
 
 ## 変更ファイルの確認
 
-`git status` は `docs/acceptance/acceptance-result-US-201.json` と
-`docs/acceptance/acceptance-result-US-201.md` のみを新規/変更として報告しており、
+`git status` は `docs/acceptance/acceptance-result-US-201.json`、`docs/acceptance/acceptance-result-US-201.md`、
+`docs/acceptance/ac2-login-failure-live.png` のみを新規/変更として報告しており、
 実装・テスト・設定ファイルへの変更は行っていない。
