@@ -19,6 +19,8 @@ services:
       retries: 5
   db:
     image: postgres:15-alpine
+    ports:
+      - "55432:5432"
     environment:
       POSTGRES_DB: umami
       POSTGRES_USER: umami
