@@ -7,7 +7,7 @@
       "maxTurns": null
     },
     "copilot": {
-      "model": "claude-sonnet-5",
+      "model": "claude-opus-4.8",
       "expectModel": null,
       "maxAiCredits": null
     }
