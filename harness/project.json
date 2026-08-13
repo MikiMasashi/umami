@@ -26,7 +26,7 @@
   "verify": {
     "baseUrl": "http://localhost:3000",
     "setup": [
-      "docker compose -f docker-compose.dev.yml up -d --wait",
+      "docker compose -f docker-compose.yml up -d --wait",
       "pnpm run build-db-client",
       "pnpm run update-db",
       "npx -y @playwright/mcp@0.0.79 install-browser chrome-for-testing"
