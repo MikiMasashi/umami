@@ -7,80 +7,83 @@
       "criterion": "ウェブサイトにメモを保持する項目が永続化層（prisma/schema.prisma の Website）に追加され、対応するマイグレーションが prisma/migrations/ に存在する。既存レコードは NULL/空で移行できる（既存データを壊さない）。",
       "verdict": "satisfied",
       "steps": [
-        "prisma/schema.prisma の model Website を確認",
-        "prisma/migrations/21_add_website_notes/migration.sql を確認"
+        "prisma/schema.prisma を開き model Website のフィールド定義を確認",
+        "prisma/migrations/ 配下を列挙し notes 関連マイグレーションの有無を確認",
+        "該当マイグレーション SQL の内容を確認"
       ],
-      "expected": "Website モデルに notes カラム（nullable）があり、対応するマイグレーションファイルが存在する",
-      "actual": "schema.prisma 70行目に `notes String? @db.VarChar(500)`（Nullable）が定義されている。prisma/migrations/21_add_website_notes/migration.sql に `ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);` が存在し、既存レコードは NULL のまま追加される（NOT NULL 制約なし・DEFAULT 指定なしのため既存データは壊れない）",
-      "evidence": "prisma/schema.prisma:70 `notes String? @db.VarChar(500)`; prisma/migrations/21_add_website_notes/migration.sql:2 `ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);`"
+      "expected": "Website モデルに notes 相当のフィールドが追加されており、対応するマイグレーションファイルが存在し、既存行を壊さない（NULL 許容）形で追加されている",
+      "actual": "schema.prisma L70 に `notes String? @db.VarChar(500)`（nullable）が追加されている。prisma/migrations/21_add_website_notes/migration.sql に `ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);` が存在し、NOT NULL 制約も DEFAULT も無いため、既存行は自動的に NULL となり既存データを壊さない",
+      "evidence": "schema.prisma:70 `notes String? @db.VarChar(500)`; prisma/migrations/21_add_website_notes/migration.sql: `ALTER TABLE \"website\" ADD COLUMN \"notes\" VARCHAR(500);`"
     },
     {
       "id": "AC-2",
       "criterion": "ウェブサイト設定の詳細画面でメモを入力して保存でき、ページを再読み込みしても保存内容が表示される。",
       "verdict": "blocked",
       "steps": [
-        "http://localhost:3000/login にアクセスし admin/umami でログインを試行",
-        "ログイン後 /websites/[websiteId]/settings への遷移を試行"
+        "http://localhost:3000/login を開く",
+        "admin / umami でログインフォームに入力し Login を押す",
+        "POST /api/auth/login のレスポンスを確認"
       ],
-      "expected": "ログインに成功し、ウェブサイト設定画面でメモ入力・保存・再読込後の表示確認ができる",
-      "actual": "ログインAPI（POST /api/auth/login）が 500 Internal Server Error を返し、レスポンスボディに `\"message\":\"DATABASE_URL is not set.\"` というサーバーエラーが含まれていた。アプリがデータベースに接続できないためログインもウェブサイト一覧・設定画面の表示もできず、検証に到達できなかった。/websites, /api/config, /api/auth/verify も同様に 500 を返す",
-      "evidence": "POST http://localhost:3000/api/auth/login => 500; body contains \"DATABASE_URL is not set.\" (stack trace at getClient in .next/dev/server/chunks/[root-of-the-server]__0hta884._.js); GET http://localhost:3000/api/auth/verify => 500; GET http://localhost:3000/api/config => 500 (確認: browser_navigate to /websites でも同様に500エラーがコンソールに記録された)"
+      "expected": "ログインに成功し、ウェブサイト設定画面（/websites/[websiteId]/settings）に遷移してメモ欄を操作できる",
+      "actual": "ログイン操作後、画面に赤字で「Failed to execute 'json' on 'Response': Unexpected end of JSON input」というエラーが表示され、ログインできなかった。POST /api/auth/login は 500 Internal Server Error を返す。サーバーログ（.next/dev/logs/next-development.log）に `PrismaClientKnownRequestError ... Authentication failed against the database server, the provided database credentials for \\`username\\` are not valid` を確認。原因はリポジトリ直下の .env の DATABASE_URL が `postgresql://username:mypassword@localhost:5432/mydb` という未設定のプレースホルダのままであること（docker-compose.yml が期待する `umami:umami@db:5432/umami` とは不一致）。この状態ではログイン自体が不可能なため、設定画面への到達・操作に至れなかった",
+      "evidence": "curl -X POST http://localhost:3000/api/auth/login -d '{\"username\":\"admin\",\"password\":\"umami\"}' => HTTP 500 (再現性あり、3回連続で500); next-development.log の PrismaClientKnownRequestError; .env の内容 `DATABASE_URL=postgresql://username:mypassword@localhost:5432/mydb`"
     },
     {
       "id": "AC-3",
       "criterion": "ウェブサイト更新 API（POST /api/websites/[websiteId]）がメモを受け付け、保存後の値をレスポンスに含む。他の項目（name / domain 等）を同時に更新しても互いを壊さない。",
       "verdict": "blocked",
       "steps": [
-        "ログイン試行（AC-2 と同じ）→ 失敗のため有効な認証トークンを取得できず、POST /api/websites/[websiteId] を認証付きで呼び出せない"
+        "AC-2 と同じログインを試行し、認証済みトークンを取得しようとした",
+        "取得したトークンで POST /api/websites/[websiteId] を呼び出す計画だった"
       ],
-      "expected": "認証済みで POST /api/websites/[websiteId] に notes を含めて送信すると、レスポンスに保存後の notes・name・domain が含まれる",
-      "actual": "データベース接続不可（DATABASE_URL is not set）のためログインができず、有効な認証済みリクエストを送れなかった。ソースコード（src/app/api/websites/[websiteId]/route.ts）を読む限り notes を受け付けてレスポンスに含める実装は存在するが、実機での動作確認はできなかった",
-      "evidence": "認証未成立のため実行不可。参考: src/app/api/websites/[websiteId]/route.ts の POST ハンドラは zod スキーマで notes: z.string().max(500).nullable().optional() を受け付け、updateWebsite 呼び出し結果を json({ ...website, ... }) で返す実装だが、これはコードリーディングであり実機確認ではないため判定根拠にしていない"
+      "expected": "有効な認証情報でログインし、そのトークンを使って notes を含む更新リクエストを送信し、レスポンスに保存後の notes / name / domain が含まれることを確認する",
+      "actual": "ログイン自体が 500 エラーで失敗するため有効な認証トークンを入手できず、認証が必要な POST /api/websites/[websiteId] を実機で呼び出すことができなかった（未認証で叩くと 401 Unauthorized が返るのみで、AC-3 の内容自体は確認不能）",
+      "evidence": "curl http://localhost:3000/api/websites/00000000-0000-0000-0000-000000000000 => {\"error\":{\"message\":\"Unauthorized\",\"code\":\"unauthorized\",\"status\":401}}; ログイン失敗の詳細は AC-2 の evidence を参照"
     },
     {
       "id": "AC-4",
       "criterion": "500文字を超えるメモは保存されず、API は 400 系エラーを返す（UI 側でもエラーが分かる）。500文字ちょうどは保存できる。",
       "verdict": "blocked",
       "steps": [
-        "ログイン試行（AC-2 と同じ）→ 失敗のため 501文字・500文字のメモを実際に送信して結果を確認できなかった"
+        "ログインしてウェブサイト設定画面のメモ欄に501文字/500文字を入力して保存を試みる計画だった"
       ],
-      "expected": "501文字のメモ送信で 400 系エラー、500文字ちょうどは保存できる、UIでもエラー表示される",
-      "actual": "データベース接続不可のためログインができず、設定画面でのメモ入力操作も POST API への実リクエストも実行できなかった",
-      "evidence": "認証未成立のため実行不可（POST /api/auth/login => 500 \"DATABASE_URL is not set.\"）"
+      "expected": "501文字入力時は保存されず 400 系エラーがUIで分かる形で表示され、500文字ちょうどは保存できる",
+      "actual": "ログインができないため設定画面のメモ欄に到達できず、実機での入力・保存操作を行えなかった",
+      "evidence": "ログイン失敗の詳細は AC-2 の evidence を参照"
     },
     {
       "id": "AC-5",
       "criterion": "ウェブサイト一覧でメモが確認できる。メモ未設定のサイトには何も表示されない（null / undefined などがそのまま出ない）。",
       "verdict": "blocked",
       "steps": [
-        "ログイン試行（AC-2 と同じ）→ 失敗のため /websites 一覧画面のメモ列表示を確認できなかった"
+        "ログインして /websites 一覧画面を開き、メモ列の表示内容を確認する計画だった"
       ],
-      "expected": "一覧画面の Notes 列にメモが表示され、未設定サイトは空欄（null/undefined 文字列が出ない）",
-      "actual": "/websites にアクセスするとコンソールに 500 エラー（/api/auth/verify, /api/config）が記録され、画面はログイン画面へ戻るのみでウェブサイト一覧テーブル自体が表示されなかった",
-      "evidence": "browser_navigate to http://localhost:3000/websites 後の snapshot はログイン画面相当（テーブルなし）。console: [ERROR] /api/auth/verify => 500, [ERROR] /api/config => 500"
+      "expected": "メモが設定されたサイトはその内容（要約）が表示され、未設定のサイトは空欄（null/undefined 文字列が出ない）",
+      "actual": "ログインができないため /websites 一覧画面に認証済みで到達できず、実機でのメモ列表示を確認できなかった",
+      "evidence": "ログイン失敗の詳細は AC-2 の evidence を参照"
     },
     {
       "id": "AC-6",
       "criterion": "ウェブサイトを更新する権限のないユーザーはメモを更新できない（既存の canUpdateWebsite 相当の認可に従い 401/403 相当を返す）。",
       "verdict": "blocked",
       "steps": [
-        "権限のないユーザーでのログインおよび POST /api/websites/[websiteId] 呼び出しを試行 → ログイン自体が失敗"
+        "権限のないユーザー（例: playwright1）でログインし、他ユーザー所有のウェブサイトのメモ更新を試みる計画だった"
       ],
-      "expected": "権限のないユーザーが notes を更新しようとすると 401/403 相当のレスポンスが返る",
-      "actual": "データベース接続不可のため、いかなるユーザーでもログインができず、権限あり/なしの比較検証を実施できなかった",
-      "evidence": "認証未成立のため実行不可（POST /api/auth/login => 500 \"DATABASE_URL is not set.\"）"
+      "expected": "権限のないユーザーでの更新試行は 401/403 相当のエラーになりメモは更新されない",
+      "actual": "admin ユーザーですらログインが 500 エラーで失敗する状態のため、権限のない別ユーザーでのログイン・操作の実機確認にも到達できなかった",
+      "evidence": "ログイン失敗の詳細は AC-2 の evidence を参照"
     },
     {
       "id": "AC-7",
       "criterion": "既存のユニットテスト（pnpm test）と既存 E2E（tests/e2e/website.spec.ts 等）が引き続き合格する（デグレなし）。",
       "verdict": "blocked",
       "steps": [
-        "pnpm test を実行（ユニットテスト）",
-        "E2E（tests/e2e/website.spec.ts 等）はブラウザでの実機確認が必要だが、アプリが DB 接続不可のため実施不能"
+        "pnpm test を実行しユニットテスト結果を確認",
+        "E2E（tests/e2e/website.spec.ts 相当の操作）を実機のブラウザ操作で再現しようとした"
       ],
-      "expected": "ユニットテストと E2E がすべて合格する",
-      "actual": "pnpm test は 22 ファイル・102 テストすべて合格した（Test Files 22 passed, Tests 102 passed）。しかし E2E 相当の実機確認は、アプリが DATABASE_URL 未設定によりログイン・データ取得が全て 500 エラーとなるため実施できず、AC-7 全体としては未確定（一部のみ確認）と判断した",
-      "evidence": "pnpm test 実行結果: 'Test Files  22 passed (22)' / 'Tests  102 passed (102)'。E2E部分は browser_navigate/browser_snapshot でアプリ疎通不可（500エラー）のため未検証"
+      "expected": "ユニットテスト・E2E ともに既存のシナリオが引き続き合格する",
+      "actual": "pnpm test はユニットテスト 22 ファイル / 102 件がすべて成功した（デグレなし）。一方 E2E 相当の実機操作（ログイン→ウェブサイト操作）は、環境側の DB 接続不良（.env の DATABASE_URL が未設定プレースホルダのまま）によりログインの時点で 500 エラーとなり、実機で E2E シナリオを再現・確認することができなかった。ユニットテスト分は確認できたが、E2E 分（tests/e2e/website.spec.ts 相当）は未確認のため、AC 全体としては blocked と判定する",
+      "evidence": "pnpm test 実行結果: 'Test Files  22 passed (22)', 'Tests  102 passed (102)'; E2E 相当操作はログイン失敗のため未実施（AC-2 の evidence を参照）"
     }
   ]
 }
