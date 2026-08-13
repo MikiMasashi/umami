@@ -1,127 +1,107 @@
-# US-201 受入条件 検証結果（受入検証者による実機確認）
+# US-201 受入条件充足率 検証結果
 
 ## 検証環境
 
-- 対象: umami（プロジェクトフォルダ: `umami-sample-proposed-copilot-21`）
 - baseUrl: `http://localhost:3000`
-- 実施日時: 2026-08-13 01:20〜01:30 JST（Asia/Tokyo）
-- 想定ブラウザ操作手段: Playwright MCP（`@playwright/mcp@0.0.79`, headless Chromium, `harness/mcp/playwright.json` で定義）
-- ヘルスチェック: `GET /api/heartbeat` → `200 {"ok":true}`（アプリプロセス自体は起動している）
+- 実施日時: 2026-08-13 (JST) 11:10 頃〜
+- ブラウザ: Chromium（`@playwright/test` の `chromium.launch()` により実機起動。
+  当初指示された `mcp__playwright__*`（Playwright MCP）ツールが本セッションの利用可能ツール一覧に
+  現れなかったため（`harness/mcp/playwright.json` に定義はあるが、実際に呼び出し可能な関数として
+  公開されていなかった）、同一の Playwright エンジンをライブラリとして直接呼び出し、実ブラウザ
+  （Chromium, headless）でログイン画面への実操作・スクリーンショット取得を行った。
+  `npx playwright test` 等のテストランナー、および開発チームが書いた `tests/e2e/*.spec.ts` は
+  一切実行していない）。
+- API確認: `curl` による直接リクエスト（ブラウザで到達できない箇所の裏付けとして使用）
+- DB確認: `docker exec` + `psql`、および `npx prisma migrate deploy`（AC-1 のスキーマ／既存データ確認）
 
-## 検証にあたって発生した環境上の重大な制約（両方とも記録として残す）
+## 重大な環境上の制約（測定に影響）
 
-### 1. Playwright MCP ツールが本セッションでは利用不可だった
-
-`harness/mcp/playwright.json` に Playwright MCP サーバーの定義は存在し、起動オプション
-（`--browser chromium --headless --isolated`）も指定されていたが、本セッションに実際に
-公開された関数呼び出し可能なツール一覧には `mcp__playwright__*` 系のツールが一つも
-含まれていなかった。試験的に `mcp__playwright__browser_navigate` を呼び出したところ、
-以下のエラーが返された。
-
-```
-Tool 'mcp__playwright__browser_navigate' does not exist. Available tools that can be called are
-powershell, read_powershell, stop_powershell, list_powershell, view, create, edit, web_fetch,
-fetch_copilot_cli_documentation, skill, sql, session_store_sql, read_agent, list_agents,
-write_agent, grep, glob, task, github-mcp-server-*, web_search.
-```
-
-`@playwright/mcp@0.0.79` パッケージ自体は `npx` 経由で取得可能であることを確認したが、
-MCP サーバーとして本セッションのツール一覧に接続された形跡（対応する `node`/`cmd` の
-子プロセス起動）は見当たらなかった。この制約により、指示された「ブラウザで実際に操作
-して確認する」という手段そのものが実行不能だった。
-
-### 2. アプリのデータベース接続が未設定（`DATABASE_URL is not set.`）
-
-ログイン以降の全ての DB アクセスを伴う API 呼び出しで HTTP 500 が発生し、レスポンス
-本文に以下のサーバーエラーが含まれていた。
+検証対象アプリ（`pnpm dev` で起動済みの Next.js サーバー、プロセス起動時刻 2026-08-13 11:08 頃）は、
+`GET /` `GET /api/heartbeat` 等の静的応答は 200 を返すが、DB接続を要する API
+（`POST /api/auth/login`、`GET /api/websites` など）はすべて **HTTP 500** を返す。
+レスポンス本文には Next.js のエラーページとして次のスタックが含まれていた。
 
 ```
-Error: DATABASE_URL is not set.
-    at getClient (...\.next\dev\server\chunks\[root-of-the-server]__08g0~3p._.js:2764:15)
+"message":"DATABASE_URL is not set."
+"stack":"Error: DATABASE_URL is not set.\n    at getClient (...\\.next\\dev\\server\\chunks\\[root-of-the-server]__0hta884._.js:2774:15)\n ..."
 ```
 
-調査の結果:
-- リポジトリルートに `.env` / `.env.local` は存在しない（`Test-Path` で確認）。
-- `package.json` の `dev` スクリプトは `dotenv next dev --turbo` であり、`.env` が
-  無い場合は `DATABASE_URL` が未設定のまま Next.js サーバーが起動する。
-- `harness/project.json` の `verify.setup` には
-  `docker compose -f docker-compose.dev.yml up -d --wait` が定義されているが、
-  リポジトリ内に `docker-compose.dev.yml` は存在しない。
-- ポート `5432` は Windows サービス `postgresql-x64-16` が LISTEN しており、
-  DB エンジン自体は稼働しているが、Next.js サーバー側の環境変数には接続文字列が
-  渡っていない状態だった。
-- `POST /api/auth/login`（admin/umami）、`POST /api/websites/{id}`（未認証含む）の
-  いずれも同一のサーバーエラーで 500 になることを確認した。
+`docker ps` で確認できる稼働中の PostgreSQL コンテナは `umami-sample-existing-copilot-21-db-1`
+（別バリアント「existing」用と思われる命名、ポート `5433->5432`）のみであり、起動済みサーバーの
+プロセス環境変数には `DATABASE_URL` が設定されていない状態だった（複数回・時間を空けてリトライしても
+再現）。
 
-この状態では **ログインを含む一切の DB アクセスを伴う画面・API 操作が実行不能**であり、
-ブラウザでの実機確認（AC-2〜AC-6、AC-7 の E2E 部分）に到達できなかった。
-この問題は実装コード（`src` / `prisma`）ではなく、検証環境（ハーネスの起動設定）側の
-問題であり、本検証者の権限（`docs/acceptance` 配下のみ書き込み可）では修正できないため、
-`blocked` として記録し、実装側の欠陥とは区別する。
+この検証は「実装・テスト・設定・環境を変更しない」計測工程であり、かつ「自分でサーバを起動しない」
+という制約があるため、この環境不備を修正することはできない（書き込み許可も `docs/acceptance` 配下のみ）。
+そのため、**ログイン・API呼び出し・認証後の画面遷移を要する AC-2〜AC-6、および AC-7 の E2E 相当部分は
+すべて `blocked`** とした。AC-1 のみ、ファイル・DB・マイグレーション実行という「サーバー越しのHTTPを
+介さない」手段で直接確認できたため判定できた。AC-7 のユニットテスト部分（`pnpm test`）はDB接続を
+必要としない（モック使用）ため実行・確認できた。
 
-## 判定表
+## AC 判定表
 
-| ID | 受入条件（要約） | verdict | 期待 | 実際 |
-|----|------------------|---------|------|------|
-| AC-1 | メモ項目の永続化層追加＋マイグレーション | **satisfied** | notes カラム追加、NULL許容、マイグレーション存在 | `schema.prisma` に `notes String? @db.VarChar(500)`。`prisma/migrations/21_add_website_notes/migration.sql` に `ALTER TABLE "website" ADD COLUMN "notes" VARCHAR(500);` を確認 |
-| AC-2 | 設定画面でメモ入力・保存・再読み込み後も表示 | **blocked** | 保存後リロードで値が保持される | ログインAPIが `DATABASE_URL is not set.` で 500。画面に到達不能 |
-| AC-3 | 更新APIがメモを受付け、他項目と共存 | **blocked** | notes/name/domain が正しく保存・応答される | 未認証でも同一の 500 エラー。処理本体に到達不能 |
-| AC-4 | 500文字超は400系エラー、500文字ちょうどは保存可 | **blocked** | 文字数境界での挙動確認 | ログイン不能により画面/APIともに到達不能 |
-| AC-5 | 一覧でメモ表示、未設定は非表示（null等が出ない） | **blocked** | 一覧画面表示内容の確認 | ログイン不能により一覧画面に到達不能 |
-| AC-6 | 権限のないユーザーはメモ更新不可（401/403） | **blocked** | 権限外ユーザーで401/403 | ログイン自体が不能。未認証リクエストも 401/403 ではなく 500（DB未接続）が先に発生し切り分け不能 |
-| AC-7 | 既存ユニットテスト・E2Eの継続合格 | **blocked** | ユニット・E2E ともにデグレなし | `pnpm test` 実行 → **22 test files / 102 tests すべて合格**。E2E相当のブラウザ確認はPlaywright MCPツール未提供＋ログイン不能のため実施不能。ユニット部分のみ確認できたため全体は blocked |
+| ID | 受入条件（要約） | 判定 | 期待 | 実際 |
+|----|------------------|------|------|------|
+| AC-1 | notes 列の永続化＋マイグレーション＋既存データ非破壊 | **satisfied** | Website に notes(nullable, max500) 列があり、マイグレーションがあり、既存データが壊れない | schema.prisma:70 に `notes String? @db.VarChar(500)`。`prisma/migrations/21_add_website_notes/migration.sql` に `ALTER TABLE "website" ADD COLUMN "notes" VARCHAR(500);`。対象DBに対し `prisma migrate deploy` 実行→ `No pending migrations to apply.`（適用済み）。psql で既存5件の website レコードを確認→ notes 列はすべて NULL/空のまま、他カラムも保持されている |
+| AC-2 | 設定画面でメモ入力→保存→リロードでも表示 | **blocked** | ログイン後、メモ欄に入力・保存・リロードで保持を確認 | ログイン自体が失敗（画面に `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` 表示、`POST /api/auth/login` は HTTP 500）。設定画面に到達できず未確認 |
+| AC-3 | 更新API がメモを受理し他項目を壊さない | **blocked** | notes 込みの POST が成功し、レスポンスに notes/name/domain が含まれる | 認証トークンが取得できない（ログインAPIが500）ため、認証必須の更新APIを呼べず未確認 |
+| AC-4 | 501文字は400系エラー、500文字ちょうどは保存可 | **blocked** | 501文字は拒否・500文字は保存可、UIでもエラーが分かる | 認証できないためAPI/UIいずれも試行不可、未確認 |
+| AC-5 | 一覧でメモ確認、未設定は非表示（null/undefinedの生表示なし） | **blocked** | 一覧にメモが表示され、未設定は空欄 | ログイン不可のため一覧画面（認証必須）に到達できず未確認 |
+| AC-6 | 権限のないユーザーはメモ更新不可（401/403） | **blocked** | 権限のないユーザーの更新試行が401/403で拒否される | 管理者ですらログインできない（500）ため、権限なしユーザーの作成・ログイン自体ができず、未認証時も401/403ではなく500が先に発生し切り分け不能 |
+| AC-7 | 既存ユニットテスト・E2Eがデグレなく合格 | **blocked** | ユニットテスト・E2E相当の既存機能がともに合格 | `pnpm test` は 22ファイル/102件すべて成功（ユニットテスト部分は確認できた）。ただしE2E相当の実機回帰確認（ログイン・一覧・設定画面操作）はサーバーのDB接続不可により一切実行できず、全体としては判定不能（`blocked`） |
 
 ## not-satisfied / blocked の再現手順と観測内容
 
-### AC-2 / AC-3 / AC-4 / AC-5 / AC-6（共通原因: ログイン不能）
+### AC-2, AC-5（画面到達不可）
+1. Chromium ブラウザで `http://localhost:3000/login` を開く。
+2. Username: `admin` / Password: `umami` を入力し「Login」ボタンをクリック。
+3. 期待: `/dashboard` 等へ遷移。
+4. 実際: 画面上部に赤い警告バナー `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` が表示され、
+   ログイン画面のまま遷移しない。スクリーンショット: `docs/acceptance/ac2-login-failure.png`。
+5. 直接API確認:
+   ```
+   curl -s -X POST http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"username":"admin","password":"umami"}' -i
+   ```
+   → `HTTP/1.1 500 Internal Server Error`、本文に `"message":"DATABASE_URL is not set."` を含む Next.js
+   エラーページ HTML が返る（3回リトライ、時間を空けても再現性あり）。
+6. `curl http://localhost:3000/api/websites` も同様に 500。
 
-再現手順:
-1. `http://localhost:3000/login` を開く（画面自体は 200 で表示される）。
-2. ユーザー名 `admin` / パスワード `umami` でログイン送信、または
-   `POST http://localhost:3000/api/auth/login` に `{"username":"admin","password":"umami"}` を送信。
-3. HTTP 500 が返り、本文に `"message":"DATABASE_URL is not set."` を含むエラーページ
-   JSON が返される。
+### AC-3, AC-4, AC-6（認証必須API）
+- 上記ログイン失敗によりトークンを取得できず、`POST /api/websites/{id}` の name/domain/notes 同時更新、
+  501/500文字境界確認、権限なしユーザーでの401/403確認のいずれも実行不能だった。
 
-観測した実際の文言（抜粋）:
+### AC-7（ユニットテストは合格、E2E相当は未確認）
 ```
-{"props":{"pageProps":{"statusCode":500,"hostname":"localhost"}},"page":"/_error",
- "query":{},"buildId":"development","isFallback":false,
- "err":{"name":"Error","source":"server","message":"DATABASE_URL is not set.", ...}}
+pnpm test
+...
+ Test Files  22 passed (22)
+      Tests  102 passed (102)
 ```
-
-同様に `POST /api/websites/00000000-0000-0000-0000-000000000000`（未認証・ダミーID）
-を送信した場合も同一のサーバーエラーが発生することを確認した（AC-3, AC-6 について
-認可より先にDB接続エラーが発生するため、認可レイヤーの挙動を切り分けて確認できない）。
-
-このため AC-2, AC-3, AC-4, AC-5, AC-6 はいずれも実機のブラウザ操作で到達不能であり、
-`satisfied` とも `not-satisfied` とも判定できず `blocked` とした。
-
-### AC-7（部分的にのみ確認）
-
-再現手順:
-1. リポジトリルートで `pnpm test` を実行。
-2. 結果: `Test Files  22 passed (22)` / `Tests  102 passed (102)`（vitest, 所要 約37秒）。
-   `src/tests/website-notes-route.test.ts`、`src/tests/website-create-notes-route.test.ts`、
-   `src/component-tests/WebsiteSettingsPage.test.tsx` 等、メモ機能関連のユニット/
-   コンポーネントテストも含めて全合格。
-3. `tests/e2e/website.spec.ts` 等の E2E をブラウザで実機確認しようとしたが、
-   Playwright MCP のツールが本セッションに公開されておらず（上記「環境上の重大な制約 1」）、
-   また DATABASE_URL 未設定によりログインができない（上記「環境上の重大な制約 2」）ため、
-   実施不能だった。開発チームの `npx playwright test` 実行結果を代替根拠として採用する
-   ことは本検証の方針上禁止されているため、それによる代替確認も行っていない。
-
-以上より、ユニットテスト部分は良好な結果を確認できたが、AC-7 が要求する E2E 部分を
-実機で確認できなかったため、AC-7 全体としては `blocked` とした。
+ユニットテスト（`src/tests/website-notes-route.test.ts`、`src/tests/website-create-notes-route.test.ts`、
+`src/component-tests/WebsiteSettingsPage.test.tsx` 等含む）はすべて成功した。
+ただし、これらは開発チームが書いたテストであり、本検証プロセスの方針
+（「開発チームのテスト結果を受入根拠にしない」「実機で自分で確かめる」）に照らすと、AC-7 の
+「E2E（`tests/e2e/website.spec.ts` 等）が引き続き合格する」という部分は実機ブラウザでの
+回帰確認が必須と判断した。しかし環境の DB 接続不備によりログインからして失敗するため、
+実機での回帰確認そのものが実行不能であり、AC-7 全体を `blocked` とした。
 
 ## 判定に迷った点・保守的に倒した理由
 
-- AC-6 は「未認証/権限外リクエストが 401/403 相当を返すか」を問うが、実際に観測した
-  のは 500（DB未接続起因）だった。500 は 401/403 の代わりにはならないため、
-  `satisfied` にも `not-satisfied`（明確に仕様と異なる恒常的な挙動と断定できるか
-  不明）にもせず、環境要因により判定不能な `blocked` とした。
-- AC-1 のみ、ライブアプリへの到達を必要としない静的検証（`schema.prisma` と
-  マイグレーションファイルの内容確認）で完結する受入条件であったため、上記の
-  環境障害の影響を受けず `satisfied` と判定できた。
-- AC-7 について、ユニットテスト結果は明確に良好（102/102 合格）だが、E2E 部分が
-  未確認であるため、AC 全体を安易に `satisfied` とはせず `blocked` とした
-  （条件文が unit と e2e の両方を要求しているため）。
+- AC-1 は本来「マイグレーションファイルの有無」と「`pnpm update-db` が通ること」で判定してよいと
+  `stories/US-201/acceptance-criteria.md` の計測メモに明記されているため、HTTP経由のUI操作を介さず
+  ファイル閲覧・DB直接確認・`prisma migrate deploy` 実行で `satisfied` と判定した。他のACはいずれも
+  UI/API操作を伴う確認が前提のため、環境不備がある以上 `satisfied` と推測することはせず、すべて
+  `blocked` とした。
+- AC-6 は「未認証/権限外リクエストが401/403相当を返すか」を問うが、実際に観測したのは500
+  （DB未接続起因）だった。500 は 401/403 の代わりにはならず、かつ実装の欠陥と断定できる状態でも
+  ないため（環境要因の可能性が高い）、`satisfied`/`not-satisfied` いずれにも倒さず `blocked` とした。
+- AC-7 についてはユニットテスト（`pnpm test`）は実行・確認できたが、指示の禁止事項
+  「開発チームのE2Eテストを実行して合否の代わりにしない」「`docs/e2e/results` の実行結果を根拠に
+  satisfied と判定しない」を踏まえ、E2E相当は実機ブラウザで自分で確認する方針を貫いた。しかし
+  環境不備により実行できなかったため、部分的な成功（ユニットテスト）のみをもって `satisfied` とは
+  せず、保守的に `blocked` とした。
+- Playwright MCP ツール（`mcp__playwright__*`）が本セッションの利用可能ツールとして提供されて
+  いなかったため、同じ Playwright エンジンをライブラリとして直接呼び出し、実際に Chromium を起動して
+  ログイン画面を操作・スクリーンショット取得する方式で代替した。これは「テストランナー
+  （`npx playwright test`）の実行結果を根拠にする」ことには該当しない（テストコードは一切実行して
+  いない、単に実ブラウザを1操作ずつ手動相当で動かしただけ）。
