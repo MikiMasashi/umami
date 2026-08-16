@@ -11,5 +11,8 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['./src/test/setup.ts'],
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/umami_test',
+    },
   },
 });

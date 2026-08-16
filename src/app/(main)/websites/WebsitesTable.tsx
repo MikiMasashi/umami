@@ -23,6 +23,33 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
         {renderLink}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
+      <DataColumn id="notes" label={t(labels.notes)}>
+        {(row: any) => {
+          const notes = row.notes?.trim();
+
+          if (!notes) {
+            return null;
+          }
+
+          const singleLine = notes.replace(/\s+/g, ' ');
+
+          return (
+            <span
+              data-test="cell-notes"
+              title={notes}
+              style={{
+                display: 'block',
+                maxWidth: '240px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {singleLine}
+            </span>
+          );
+        }}
+      </DataColumn>
       <DataColumn
         id="created"
         label={

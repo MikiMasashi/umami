@@ -54,6 +54,7 @@ export const labels: Record<string, string> = {
   action: 'label.action',
   actions: 'label.actions',
   domain: 'label.domain',
+  notes: 'label.notes',
   websiteId: 'label.website-id',
   resetWebsite: 'label.reset-website',
   deleteWebsite: 'label.delete-website',
@@ -444,4 +445,5 @@ export const messages: Record<string, string> = {
   serverError: 'message.sever-error',
   upgradeRequired: 'message.upgrade-required',
   replayMinDurationDescription: 'message.replay-min-duration-description',
+  notesTooLong: 'message.notes-too-long',
 };
