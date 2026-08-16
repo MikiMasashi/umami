@@ -77,7 +77,7 @@ const website = await updateWebsite(websiteId, {
 #### 3.5 レスポンス
 
 - 成功時: 既存と同一形状の Website オブジェクト（`shareId` 付き）を返す。`notes` フィールドが含まれる。ステータス 200。
-- 認可失敗: 既存 `unauthorized()`（401/403 相当）。AC-4.1。
+- 認可失敗: 既存 `unauthorized()` を使用し **401** を返す。AC-4.1。既存 API は認可失敗を一貫して `unauthorized()`（`lib/response.ts`：`status: 401`）で表現しており（`forbidden()` は別途 403 として存在するが本経路では使用しない）、その設計思想に合わせる。
 - バリデーション失敗（501文字超過など）: `parseRequest` が zod エラーを 400 相当で返す。AC-2.2。
 - Website 不在: 既存 `badRequest({ message: 'Website not found.' })`。
 
@@ -90,6 +90,6 @@ const website = await updateWebsite(websiteId, {
 ### 5. 契約テスト観点（実装しない・指針のみ）
 
 - 500文字は 200、501文字は 400。
-- 更新権限なしユーザーの POST は 401/403。
+- 更新権限なしユーザーの POST は 401（`unauthorized()`）。
 - `notes` 未指定の更新で既存 `notes` が保持される。
 - 空文字/空白のみ入力が `null` として保存される。
