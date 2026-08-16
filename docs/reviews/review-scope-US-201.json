@@ -1,0 +1,87 @@
+{
+  "story": "US-201",
+  "targets": [
+    {
+      "path": "src/app/(main)/websites/WebsitesTable.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-3", "AC-4"],
+      "covered_by": [
+        "src/component-tests/notes-website-list.test.tsx::C-8 (FR-4/AC-3): a website with notes shows its notes text in the list",
+        "src/component-tests/notes-website-list.test.tsx::C-9 (FR-4/FR-6/AC-4): a website without notes shows no notes cell",
+        "tests/e2e/notes.spec.ts::AC-3: the list shows notes for a website that has them",
+        "tests/e2e/notes.spec.ts::AC-4: the list shows no notes cell for a website without notes"
+      ],
+      "reason": "一覧の notes セル表示・非表示は純粋な表示ロジックで、レビュー済みコンポーネント／E2E テストが振る舞いを完全に検証している。"
+    },
+    {
+      "path": "src/app/(main)/websites/[websiteId]/settings/WebsiteEditForm.tsx",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "notes の入力・保存・クリア・エラー表示・read-only はレビュー済みテストで担保されるが、canEdit によるクライアント側の認可分岐（team website の userId=null 既定 true 経路など）がレビュー済みテストで網羅されず、認可ロジックとして人間レビューが必要。"
+    },
+    {
+      "path": "src/app/api/websites/[websiteId]/route.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "サーバ側の認可（401）・バリデーション（400）・エラー分岐を含み、配線の一部は本フェーズ新規の未レビュー unit test でのみ検証。到達しない分岐は常に review。"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "データモデル定義の変更。DB はテストから到達しない（config 相当）。"
+    },
+    {
+      "path": "prisma/migrations/21_add_website_notes/migration.sql",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "DDL／マイグレーション（環境・スキーマ変更）。常に review。"
+    },
+    {
+      "path": "src/components/messages.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "i18n キーのマッピング追加（リソース／設定的変更）。label 文言はテストで完全には検証されない。"
+    },
+    {
+      "path": "public/intl/messages/en-US.json",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "i18n 文言追加。エラー文言は C-4／AC-6 で検証されるが label 追加分は振る舞いテストで完全には担保されないため review。"
+    },
+    {
+      "path": "src/tests/websites-notes-route.test.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "本フェーズ新規追加の未レビュー ユニットテスト。それ自体がレビュー対象。"
+    },
+    {
+      "path": "docs/implementation/implementation-notes-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "実装メモ（ドキュメント）。テストの対象外であり人間が内容を確認する。"
+    },
+    {
+      "path": "docs/reviews/review-scope-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "レビュー範囲提案そのもの（ドキュメント）。人間が確認する。"
+    },
+    {
+      "path": "docs/reviews/review-scope-US-201.json",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "レビュー範囲提案の機械可読版（ドキュメント）。人間が確認する。"
+    }
+  ]
+}
