@@ -23,6 +23,25 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
         {renderLink}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
+      <DataColumn id="notes" label={t(labels.notes)}>
+        {(row: any) =>
+          row.notes ? (
+            <span
+              data-test="website-notes"
+              title={row.notes}
+              style={{
+                display: 'block',
+                maxWidth: '240px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {row.notes}
+            </span>
+          ) : null
+        }
+      </DataColumn>
       <DataColumn
         id="created"
         label={
