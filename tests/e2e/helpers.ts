@@ -79,6 +79,46 @@ export async function deleteWebsite(request: APIRequestContext, auth: Auth, webs
   expect(response.status()).toBe(200);
 }
 
+// US-201: create a website and return its full body (including the generated id and notes).
+export async function createWebsite(
+  request: APIRequestContext,
+  auth: Auth,
+  data: { name: string; domain: string; notes?: string | null },
+) {
+  const response = await request.post('/api/websites', {
+    headers: authHeaders(auth),
+    data: {
+      id: uuid(),
+      createdBy: umamiUser.id,
+      ...data,
+    },
+  });
+
+  expect(response.status()).toBe(200);
+
+  return response.json();
+}
+
+// US-201: fetch a website via the GET API (used to assert persistence / authz on read).
+export async function getWebsite(request: APIRequestContext, auth: Auth, websiteId: string) {
+  return request.get(`/api/websites/${websiteId}`, {
+    headers: authHeaders(auth),
+  });
+}
+
+// US-201: raw update request so tests can assert both success and failure status codes.
+export async function updateWebsite(
+  request: APIRequestContext,
+  auth: Auth,
+  websiteId: string,
+  data: Record<string, unknown>,
+) {
+  return request.post(`/api/websites/${websiteId}`, {
+    headers: authHeaders(auth),
+    data,
+  });
+}
+
 export async function addUser(
   request: APIRequestContext,
   auth: Auth,
