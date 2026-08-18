@@ -208,6 +208,7 @@
     "needs-improvement": "Needs improvement",
     "new-password": "New password",
     "none": "None",
+    "note": "Note",
     "number-of-records": "{x} {x, plural, one {record} other {records}}",
     "ok": "OK",
     "online": "Online",

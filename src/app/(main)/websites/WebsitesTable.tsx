@@ -1,4 +1,4 @@
-import { DataColumn, DataTable, type DataTableProps, Icon } from '@umami/react-zen';
+import { DataColumn, DataTable, Text, type DataTableProps, Icon } from '@umami/react-zen';
 import type { ReactNode } from 'react';
 import { DateDistance } from '@/components/common/DateDistance';
 import { LinkButton } from '@/components/common/LinkButton';
@@ -13,6 +13,16 @@ export interface WebsitesTableProps extends DataTableProps {
   renderLink?: (row: any) => ReactNode;
 }
 
+const MAX_NOTE_LENGTH = 100;
+
+function formatNote(note?: string | null) {
+  if (!note?.trim()) {
+    return '-';
+  }
+
+  return note.length > MAX_NOTE_LENGTH ? `${note.substring(0, MAX_NOTE_LENGTH)}...` : note;
+}
+
 export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTableProps) {
   const { t, labels } = useMessages();
   const { renderUrl } = useNavigation();
@@ -23,6 +33,18 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
         {renderLink}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
+      <DataColumn id="note" label={<SortableLabel label={t(labels.note)} sortKey="note" />}>
+        {(row: any) => {
+          const displayNote = formatNote(row.note);
+          const fullNote = row.note?.trim() || '-';
+
+          return (
+            <Text truncate title={fullNote}>
+              {displayNote}
+            </Text>
+          );
+        }}
+      </DataColumn>
       <DataColumn
         id="created"
         label={

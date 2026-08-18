@@ -43,6 +43,11 @@ export async function POST(
   const schema = z.object({
     name: z.string().max(100).optional(),
     domain: z.string().max(500).optional(),
+    note: z
+      .string()
+      .max(500, { message: 'Note must be 500 characters or less' })
+      .nullable()
+      .optional(),
     shareId: z.string().max(50).nullable().optional(),
     replayConfig: z
       .object({
@@ -65,7 +70,7 @@ export async function POST(
   }
 
   const { websiteId } = await params;
-  const { name, domain, shareId, replayConfig } = body;
+  const { name, domain, note, shareId, replayConfig } = body;
 
   if (!(await canUpdateWebsite(auth, websiteId))) {
     return unauthorized();
@@ -90,6 +95,9 @@ export async function POST(
     const website = await updateWebsite(websiteId, {
       name,
       domain,
+      ...(note !== undefined && {
+        note: note === '' ? null : note,
+      }),
       ...(replayConfig !== undefined && {
         replayConfig: nextReplayConfig as Prisma.InputJsonObject,
         recorderEnabled: getRecorderEnabled(nextReplayConfig),

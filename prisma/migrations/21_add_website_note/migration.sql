@@ -1,0 +1,2 @@
+ALTER TABLE "website"
+ADD COLUMN "note" VARCHAR(500);
