@@ -60,7 +60,7 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
             const websiteId = row.id;
 
             return (
-              <LinkButton href={renderUrl(`/websites/${websiteId}/settings`)} variant="quiet">
+              <LinkButton href={renderUrl(`/websites/${websiteId}/settings`)} variant="quiet" data-test="link-button-edit">
                 <Icon>
                   <SquarePen />
                 </Icon>

@@ -48,6 +48,7 @@ export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSa
 
         return (
           <>
+            <Text as="h3">{t(labels.details)}</Text>
             <FormField name="id" label={t(labels.websiteId)}>
               <TextField data-test="text-field-websiteId" value={website?.id} isReadOnly allowCopy />
             </FormField>
@@ -75,7 +76,7 @@ export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSa
             </FormField>
             <FormField
               label={t(labels.note)}
-              data-test="input-note"
+              data-test="textarea-note"
               name="note"
               rules={{
                 validate: value =>
