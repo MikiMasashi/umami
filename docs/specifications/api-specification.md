@@ -12,20 +12,23 @@
 
 | Purpose | Method | Path | AuthZ |
 |---|---|---|---|
-| メモ取得（設定詳細の初期表示/API直接参照） | GET | `/api/websites/{websiteId}/notes` | `canViewSharedWebsite` |
-| メモ保存・更新・削除 | POST | `/api/websites/{websiteId}/notes` | `canUpdateWebsite` |
-| 一覧表示用データ取得 | GET | `/api/websites` | 既存一覧 API を拡張して `notes` を返却 |
+| ウェブサイト詳細取得（notes を含む） | GET | `/api/websites/{websiteId}` | `canViewSharedWebsite` |
+| ウェブサイト更新（notes の保存・削除を含む） | POST | `/api/websites/{websiteId}` | `canUpdateWebsite` |
+| 一覧表示用データ取得（notes を含む） | GET | `/api/websites` | 既存一覧 API を拡張して `notes` を返却 |
 
-### 1. GET `/api/websites/{websiteId}/notes`
+### 1. GET `/api/websites/{websiteId}`
 
 #### Purpose
-- 設定詳細画面のメモ初期値取得
+- ウェブサイト設定詳細画面のメモ初期値取得
 - 再読み込み後の保持確認
+- 既存の website GET エンドポイントに notes を追加返却
 
 #### Response 200
 ```json
 {
   "id": "3c4a4ed3-7f71-4a42-9bc8-0f9f34e5fa12",
+  "name": "My Website",
+  "domain": "example.com",
   "notes": "本番用サイト。2026年Q4キャンペーン計測に利用。",
   "updatedAt": "2026-08-18T11:20:00.000Z"
 }
@@ -35,6 +38,8 @@
 ```json
 {
   "id": "3c4a4ed3-7f71-4a42-9bc8-0f9f34e5fa12",
+  "name": "My Website",
+  "domain": "example.com",
   "notes": null,
   "updatedAt": "2026-08-18T11:20:00.000Z"
 }
@@ -46,23 +51,26 @@
 - `404 Not Found`: 対象 website が存在しない
 - `500 Internal Server Error`: 想定外エラー
 
-### 2. POST `/api/websites/{websiteId}/notes`
+### 2. POST `/api/websites/{websiteId}`
 
 #### Purpose
-- 新規入力
-- 上書き更新
-- 空文字保存による削除
+- ウェブサイト情報の更新（既存の website 更新 API）
+- メモの新規入力・上書き更新・削除（空文字送信）を統合
 
 #### Request body
 ```json
 {
+  "name": "Updated Name",
+  "domain": "newdomain.com",
   "notes": "本番用サイト。障害調査時はCSチームへ連絡。"
 }
 ```
 
-#### Request body (delete)
+#### Request body (delete note via empty string)
 ```json
 {
+  "name": "Updated Name",
+  "domain": "newdomain.com",
   "notes": ""
 }
 ```
@@ -76,17 +84,21 @@
 ```json
 {
   "id": "3c4a4ed3-7f71-4a42-9bc8-0f9f34e5fa12",
+  "name": "Updated Name",
+  "domain": "newdomain.com",
   "notes": "本番用サイト。障害調査時はCSチームへ連絡。",
-  "message": "メモが保存されました"
+  "updatedAt": "2026-08-18T11:20:00.000Z"
 }
 ```
 
-#### Response 200 (delete)
+#### Response 200 (delete via empty string)
 ```json
 {
   "id": "3c4a4ed3-7f71-4a42-9bc8-0f9f34e5fa12",
+  "name": "Updated Name",
+  "domain": "newdomain.com",
   "notes": null,
-  "message": "メモが削除されました"
+  "updatedAt": "2026-08-18T11:20:00.000Z"
 }
 ```
 
@@ -126,21 +138,7 @@
   "error": {
     "message": "メモは500文字以内です",
     "code": "VALIDATION_ERROR",
-    "status": 400,
-    "fields": {
-      "notes": [
-        "メモは500文字以内です"
-      ]
-    },
-    "zod": {
-      "properties": {
-        "notes": {
-          "errors": [
-            "Too big: expected string to have <=500 characters"
-          ]
-        }
-      }
-    }
+    "status": 400
   }
 }
 ```
@@ -150,7 +148,7 @@
 {
   "error": {
     "message": "メモを編集する権限がありません",
-    "code": "FORBIDDEN_WEBSITE_NOTES",
+    "code": "FORBIDDEN_WEBSITE_UPDATE",
     "status": 401
   }
 }
@@ -178,5 +176,5 @@
   - 閲覧専用ユーザーは UI で read-only + API で拒否
 
 ### Design decision
-- **独立 notes API を追加する**。理由は、設定画面の責務を明確化し、テストで URL 契約を固定しやすいため。
-- **一覧 API は既存 `/api/websites` を拡張する**。別 API に分けると N+1 的な追加取得が必要になり UX/実装が複雑化するため。
+- **既存 website API に notes を統合する**。理由は、notes は website の単純な属性拡張であり、独立 API にするとN+1問題が生じるため。
+- **一覧 API は既存 `/api/websites` を拡張する**。notes はすべてのユーザーが参照する可能性があり、別 API に分けるのは非効率なため。

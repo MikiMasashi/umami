@@ -34,7 +34,6 @@
 
 #### Fixed display messages
 - 成功（保存）: `メモが保存されました`
-- 成功（削除）: `メモが削除されました`
 - バリデーション: `メモは500文字以内です`
 - 権限エラー: `メモを編集する権限がありません`
 - Not Found: `対象のウェブサイトが見つかりません`
@@ -67,8 +66,8 @@
 - エラーメッセージ: `data-test="notes-error-message"`
 
 #### 2.4 API endpoints (complete paths)
-- `GET /api/websites/{websiteId}/notes`
-- `POST /api/websites/{websiteId}/notes`
+- `GET /api/websites/{websiteId}`
+- `POST /api/websites/{websiteId}`
 - `GET /api/websites`
 
 #### 2.5 API error response contract
@@ -89,7 +88,6 @@
 #### 2.6 Fixed screen messages
 - 成功: `メモが保存されました`
 - エラー: `メモは500文字以内です`
-- 削除: `メモが削除されました`
 
 ### 3. Test strategy
 
