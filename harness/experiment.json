@@ -7,7 +7,7 @@
       "maxTurns": null
     },
     "copilot": {
-      "model": "claude-haiku-4.5",
+      "model": "gpt-5.5",
       "expectModel": null,
       "maxAiCredits": null
     }
