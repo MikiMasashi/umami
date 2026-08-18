@@ -5,7 +5,6 @@ import { ROLES } from '@/lib/constants';
 import { NOTES_VALIDATION_MESSAGE, notesSchema } from '@/lib/notes';
 
 const successMessage = 'メモが保存されました';
-const deletedMessage = 'メモが削除されました';
 
 export function WebsiteNotesSection({ websiteId }: { websiteId: string }) {
   const website = useWebsite();
@@ -44,9 +43,8 @@ export function WebsiteNotesSection({ websiteId }: { websiteId: string }) {
       {
         onSuccess: async (data: any) => {
           const nextNotes = data?.notes ?? '';
-          const message = nextNotes ? successMessage : deletedMessage;
           setNotes(nextNotes);
-          setSuccess(message);
+          setSuccess(successMessage);
           touch('websites');
           touch(`website:${websiteId}`);
         },
@@ -55,10 +53,9 @@ export function WebsiteNotesSection({ websiteId }: { websiteId: string }) {
 
     if (response && typeof response === 'object' && 'notes' in response) {
       const nextNotes = response.notes ?? '';
-      const message = nextNotes ? successMessage : deletedMessage;
       setNotes(nextNotes);
-      setSuccess(message);
-      toast(message);
+      setSuccess(successMessage);
+      toast(successMessage);
     }
   };
 

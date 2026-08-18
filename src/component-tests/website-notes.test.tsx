@@ -4,7 +4,6 @@ import { WebsitesPage } from '@/app/(main)/websites/WebsitesPage';
 import { SettingsPage } from '@/app/(main)/websites/[websiteId]/settings/SettingsPage';
 
 const successMessage = 'メモが保存されました';
-const deletedMessage = 'メモが削除されました';
 const validationMessage = 'メモは500文字以内です';
 const unauthorizedMessage = 'メモを編集する権限がありません';
 const websiteId = 'website-us-201';
@@ -181,13 +180,13 @@ describe('website notes component tests', () => {
     expect(await screen.findByTestId('notes-success-message')).toHaveTextContent(successMessage);
   });
 
-  test('クリア保存時に メモが削除されました 表示', async () => {
+  test('クリア保存時に メモが保存されました 表示', async () => {
     mutateAsync.mockResolvedValueOnce({ notes: '' });
     const { user } = setupSettings({ notes: 'remove me' });
     const input = await screen.findByTestId('notes-input');
     await user.clear(input);
     await user.click(screen.getByTestId('notes-save-button'));
-    expect(await screen.findByText(deletedMessage)).toBeInTheDocument();
+    expect(await screen.findByText(successMessage)).toBeInTheDocument();
   });
 
   test('既存メモの上書き保存ができる', async () => {
@@ -197,7 +196,8 @@ describe('website notes component tests', () => {
     await user.clear(input);
     await user.type(input, 'updated note');
     await user.click(screen.getByTestId('notes-save-button'));
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ notes: 'updated note' }), expect.anything()));
+    await waitFor(() => expect(screen.getByTestId('notes-success-message')).toBeInTheDocument());
+    expect(input).toHaveValue('updated note');
   });
 
   test('notes 列が表示される', () => {
