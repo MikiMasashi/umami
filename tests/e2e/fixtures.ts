@@ -28,4 +28,18 @@ export const websites = {
     name: 'Playwright Website Updated',
     domain: 'playwrightupdated.com',
   },
+  websiteWithNote: {
+    name: 'Website with Note',
+    domain: 'note.playwright.com',
+    note: 'Production environment. Managed by Alice.',
+  },
+};
+
+export const notes = {
+  shortNote: 'Short memo',
+  longNote: 'A'.repeat(150), // 150 文字
+  maxLengthNote: 'B'.repeat(500), // 500 文字（上限）
+  invalidNote: 'C'.repeat(501), // 501 文字（超過）
+  noteWithLineBreaks: 'Line 1\nLine 2\nLine 3',
+  noteWithSpecialChars: 'Prod/Staging - Purpose: API Tests & QA',
 };
