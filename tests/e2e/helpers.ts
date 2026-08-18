@@ -24,6 +24,7 @@ export async function loginViaApi(
 ): Promise<Auth> {
   const response = await request.post('/api/auth/login', {
     data: { username, password },
+    timeout: 30_000,
   });
 
   expect(response.status()).toBe(200);
