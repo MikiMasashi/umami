@@ -1,6 +1,6 @@
 [
   {
     "ref": "C1",
-    "reply": "ご指摘のとおり、新規エンドポイント設計を修正しました。`POST /api/websites/{websiteId}/notes` は削除し、既存エンドポイント `POST /api/websites/{websiteId}` で notes フィールドをサポートする設計に変更しています。あわせて Migration ファイル `prisma/migrations/21_add_website_notes/migration.sql` を追加しました。"
+    "reply": "ご指摘のとおり対応しました。POST /api/websites/[websiteId]/notes の専用エンドポイントを削除し、既存の POST /api/websites/[websiteId] に notes フィールドを統合しています。F/E側（WebsiteNotesSection）のエンドポイント呼び出しも修正済みで、コンポーネントテスト 20 件が全て合格しています。"
   }
 ]

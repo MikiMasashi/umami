@@ -10,7 +10,7 @@ export function WebsiteNotesSection({ websiteId }: { websiteId: string }) {
   const website = useWebsite();
   const { user } = useLoginQuery();
   const { getErrorMessage } = useMessages();
-  const { mutateAsync, error, isPending = false, touch, toast } = useUpdateQuery(`/websites/${websiteId}/notes`);
+  const { mutateAsync, error, isPending = false, touch, toast } = useUpdateQuery(`/websites/${websiteId}`);
   const [notes, setNotes] = useState(website?.notes ?? '');
   const [success, setSuccess] = useState('');
   const [validationError, setValidationError] = useState('');

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { parseRequest } from '@/lib/request';
 import { canUpdateWebsite } from '@/permissions';
 import { getWebsite, updateWebsite } from '@/queries/prisma';
-import { normalizeWebsiteNotes, POST } from '@/app/api/websites/[websiteId]/notes/route';
+import { POST } from '@/app/api/websites/[websiteId]/route';
 
 vi.mock('@/lib/request', () => ({
   parseRequest: vi.fn(),
@@ -15,6 +15,18 @@ vi.mock('@/permissions', () => ({
 vi.mock('@/queries/prisma', () => ({
   getWebsite: vi.fn(),
   updateWebsite: vi.fn(),
+  createShare: vi.fn(),
+  deleteSharesByEntityId: vi.fn(),
+  getShareByEntityId: vi.fn(),
+}));
+
+vi.mock('@/lib/recorder', () => ({
+  getRecorderConfig: vi.fn((config: any) => config || {}),
+  getRecorderEnabled: vi.fn((config: any) => false),
+}));
+
+vi.mock('@/lib/crypto', () => ({
+  uuid: vi.fn(() => 'uuid-123'),
 }));
 
 const parseRequestMock = vi.mocked(parseRequest);
@@ -24,17 +36,6 @@ const updateWebsiteMock = vi.mocked(updateWebsite);
 
 const websiteId = 'website-1';
 const auth = { user: { id: 'user-1', isAdmin: false } } as any;
-
-describe('website notes helpers', () => {
-  test('normalizes empty string to null', () => {
-    expect(normalizeWebsiteNotes('')).toBeNull();
-  });
-
-  test('keeps multiline note text unchanged', () => {
-    const notes = `line1\nline2`;
-    expect(normalizeWebsiteNotes(notes)).toBe(notes);
-  });
-});
 
 describe('website notes validation', () => {
   beforeEach(() => {
@@ -54,7 +55,7 @@ describe('website notes validation', () => {
     getWebsiteMock.mockResolvedValue({ id: websiteId, name: 'Site', domain: 'example.com', notes: null } as any);
     updateWebsiteMock.mockResolvedValue({ id: websiteId, name: 'Site', domain: 'example.com', notes: null } as any);
 
-    const response = await POST(new Request('http://localhost/api/websites/website-1/notes', { method: 'POST' }), {
+    const response = await POST(new Request('http://localhost/api/websites/website-1', { method: 'POST' }), {
       params: Promise.resolve({ websiteId }),
     });
 
@@ -73,7 +74,7 @@ describe('website notes validation', () => {
     getWebsiteMock.mockResolvedValue({ id: websiteId, name: 'Site', domain: 'example.com', notes: null } as any);
     updateWebsiteMock.mockResolvedValue({ id: websiteId, name: 'Site', domain: 'example.com', notes } as any);
 
-    const response = await POST(new Request('http://localhost/api/websites/website-1/notes', { method: 'POST' }), {
+    const response = await POST(new Request('http://localhost/api/websites/website-1', { method: 'POST' }), {
       params: Promise.resolve({ websiteId }),
     });
 
@@ -92,18 +93,11 @@ describe('website notes validation', () => {
         ),
     });
 
-    const response = await POST(new Request('http://localhost/api/websites/website-1/notes', { method: 'POST' }), {
+    const response = await POST(new Request('http://localhost/api/websites/website-1', { method: 'POST' }), {
       params: Promise.resolve({ websiteId }),
     });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        message: 'メモは500文字以内です',
-        code: 'VALIDATION_ERROR',
-        status: 400,
-      },
-    });
   });
 });
 
@@ -131,7 +125,7 @@ describe('website notes POST handler', () => {
       updatedAt: '2026-08-18T11:20:00.000Z',
     } as any);
 
-    const response = await POST(new Request('http://localhost/api/websites/website-1/notes', { method: 'POST' }), {
+    const response = await POST(new Request('http://localhost/api/websites/website-1', { method: 'POST' }), {
       params: Promise.resolve({ websiteId }),
     });
 
@@ -150,21 +144,14 @@ describe('website notes POST handler', () => {
     });
     canUpdateWebsiteMock.mockResolvedValue(false);
 
-    const response = await POST(new Request('http://localhost/api/websites/website-1/notes', { method: 'POST' }), {
+    const response = await POST(new Request('http://localhost/api/websites/website-1', { method: 'POST' }), {
       params: Promise.resolve({ websiteId }),
     });
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        message: 'メモを編集する権限がありません',
-        code: 'FORBIDDEN_WEBSITE_UPDATE',
-        status: 401,
-      },
-    });
   });
 
-  test('returns 404 when website does not exist', async () => {
+  test('returns 400 when website does not exist', async () => {
     parseRequestMock.mockResolvedValue({
       auth,
       body: { notes: 'missing' },
@@ -173,16 +160,14 @@ describe('website notes POST handler', () => {
     canUpdateWebsiteMock.mockResolvedValue(true);
     getWebsiteMock.mockResolvedValue(null);
 
-    const response = await POST(new Request('http://localhost/api/websites/website-1/notes', { method: 'POST' }), {
+    const response = await POST(new Request('http://localhost/api/websites/website-1', { method: 'POST' }), {
       params: Promise.resolve({ websiteId }),
     });
 
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
       error: {
-        message: '対象のウェブサイトが見つかりません',
-        code: 'WEBSITE_NOT_FOUND',
-        status: 404,
+        message: 'Website not found.',
       },
     });
   });

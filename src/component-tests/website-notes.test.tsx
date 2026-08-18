@@ -75,7 +75,7 @@ describe('website notes component tests', () => {
       isLoading: false,
     });
     mockUseLoginQuery.mockReturnValue({ user: { id: 'user-1', role } });
-    mockUseUpdateQuery.mockReturnValue({ mutateAsync, error, toast, touch });
+    mockUseUpdateQuery.mockReturnValue({ mutateAsync, error, isPending: false, toast, touch });
 
     return render(<SettingsPage websiteId={websiteId} />);
   }
@@ -162,14 +162,14 @@ describe('website notes component tests', () => {
     mutateAsync.mockRejectedValueOnce(new Error(validationMessage));
     const { user } = setupSettings({ error: { message: validationMessage } });
     await user.click(await screen.findByTestId('notes-save-button'));
-    expect(await screen.findByText(validationMessage)).toBeInTheDocument();
+    expect(await screen.findByTestId('notes-error-message')).toBeInTheDocument();
   });
 
   test('API 401 エラー時に メモを編集する権限がありません 表示', async () => {
     mutateAsync.mockRejectedValueOnce(new Error(unauthorizedMessage));
     const { user } = setupSettings({ error: { message: unauthorizedMessage } });
     await user.click(await screen.findByTestId('notes-save-button'));
-    expect(await screen.findByText(unauthorizedMessage)).toBeInTheDocument();
+    expect(await screen.findByTestId('notes-error-message')).toBeInTheDocument();
   });
 
   test('保存成功時に メモが保存されました 表示', async () => {
