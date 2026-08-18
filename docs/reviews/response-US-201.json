@@ -1,6 +1,6 @@
 [
   {
     "ref": "C1",
-    "reply": "ご指摘のとおり対応しました。POST /api/websites/[websiteId]/notes の専用エンドポイントを削除し、既存の POST /api/websites/[websiteId] に notes フィールドを統合しています。F/E側（WebsiteNotesSection）のエンドポイント呼び出しも修正済みで、コンポーネントテスト 20 件が全て合格しています。"
+    "reply": "ご指摘のとおり修正しました。playwright.config.ts のテストタイムアウトを 30 秒から 120 秒に延長し、アクション・ナビゲーションタイムアウトも 10 秒に拡張しました。これにより E2E テストの実行に十分な時間が確保されます。"
   }
 ]
