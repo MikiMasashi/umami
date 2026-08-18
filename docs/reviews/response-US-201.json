@@ -1,10 +1,6 @@
 [
   {
     "ref": "C1",
-    "reply": "ご指摘のとおり修正しました。削除メッセージ「メモが削除されました」を削除し、保存と削除の両方を「メモが保存されました」というメッセージで統一しました。実装ファイル（WebsiteNotesSection.tsx）とテストファイル（website-notes.test.tsx）の両方で削除メッセージ定義を削除し、すべての成功ケースで統一メッセージを使用するようにしています。"
-  },
-  {
-    "ref": "C2",
-    "reply": "ご指摘のとおり修正しました。「既存メモの上書き保存ができる」テストで、API呼び出しチェックだけでなく、画面上の入力欄の値が新しい内容に実際に更新されることを確認するように改善しました。成功メッセージ表示待機後、input.toHaveValue() で画面の値が更新されたことを検証するようにしています。"
+    "reply": "ご指摘のとおり、新規エンドポイント設計を修正しました。`POST /api/websites/{websiteId}/notes` は削除し、既存エンドポイント `POST /api/websites/{websiteId}` で notes フィールドをサポートする設計に変更しています。あわせて Migration ファイル `prisma/migrations/21_add_website_notes/migration.sql` を追加しました。"
   }
 ]

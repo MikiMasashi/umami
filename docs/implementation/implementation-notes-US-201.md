@@ -4,42 +4,36 @@
 
 前フェーズで作成された E2E テスト (`tests/e2e/notes.spec.ts`) を緑にするため、以下を実装しました：
 
-### 1. Prisma スキーマ更新
-- **ファイル**: `prisma/schema.prisma`
-- **変更内容**: `Website` モデルに `notes` フィールドを追加
-  ```prisma
-  notes     String?   @db.VarChar(500)
-  ```
-- **特性**:
-  - 型: `String?` (nullable)
-  - DB 型: `VARCHAR(500)`
-  - index: なし
-  - 既存レコードは NULL で初期化（migration 実行時）
+### 1. Prisma スキーマ更新 と Migration
+- **スキーマファイル**: `prisma/schema.prisma`
+  - **変更内容**: `Website` モデルに `notes` フィールドを追加
+    ```prisma
+    notes     String?   @db.VarChar(500)
+    ```
+  - **特性**:
+    - 型: `String?` (nullable)
+    - DB 型: `VARCHAR(500)`
+    - index: なし
+    - 既存レコードは NULL で初期化（migration 実行時）
+
+- **Migration ファイル**: `prisma/migrations/21_add_website_notes/migration.sql`
+  - **変更内容**: 既存テーブル `website` に列 `notes` を追加
+    ```sql
+    ALTER TABLE "website" ADD COLUMN "notes" VARCHAR(500);
+    ```
+  - **動作**: 実行時、既存レコードの `notes` は自動的に NULL で初期化される
 
 ### 2. バックエンド API 実装
 
-#### 2.1 新規エンドポイント: `POST /api/websites/{websiteId}/notes`
-- **ファイル**: `src/app/api/websites/[websiteId]/notes/route.ts`
-- **仕様**:
-  - Request body: `{ notes: string }`
+#### 2.1 既存エンドポイント との互換性
+- `GET /api/websites/{websiteId}`: notes フィールドを自動返却（Prisma で全フィールド選択）
+- `GET /api/websites`: 一覧 API も notes を返却
+- `POST /api/websites/{websiteId}`: 既存エンドポイントで notes も更新可能
+  - Request body に `{ notes?: string }` を追加
   - Validation: notes は最大 500 文字
   - 空文字送信時は `null` に正規化して保存
   - Response: 更新後の website 全体を返却（notes を含む）
-- **エラーハンドリング**:
-  - `400 Bad Request`: バリデーション失敗（500 文字超）
-    ```json
-    { "error": { "message": "メモは500文字以内です", "code": "VALIDATION_ERROR", "status": 400 } }
-    ```
-  - `401 Unauthorized`: `canUpdateWebsite` 権限なし
-    ```json
-    { "error": { "message": "メモを編集する権限がありません", "code": "FORBIDDEN_WEBSITE_UPDATE", "status": 401 } }
-    ```
-  - `404 Not Found`: website が存在しない
-  - `500 Internal Server Error`: その他エラー
-
-#### 2.2 既存エンドポイント との互換性
-- `GET /api/websites/{websiteId}`: notes フィールドを自動返却（Prisma で全フィールド選択）
-- `GET /api/websites`: 一覧 API も notes を返却
+  - エラーハンドリング: 既存の権限・バリデーション機構を利用
 
 ### 3. フロントエンド UI 実装
 
@@ -48,7 +42,7 @@
 - **機能**:
   - textarea で notes を入力・編集
   - リアルタイムバリデーション（500 文字超でエラー表示）
-  - 保存ボタンで `POST /api/websites/{websiteId}/notes` に送信
+  - 保存ボタンで既存エンドポイント `POST /api/websites/{websiteId}` に `{ notes: ... }` を送信
   - 空文字送信で削除扱い（null に正規化）
   - 成功時: toast で「メモが保存されました」 / 「メモが削除されました」
   - エラー時: サーバーエラーメッセージを表示
@@ -95,10 +89,10 @@
     - 0 文字（空）OK
     - 500 文字 OK
     - 501 文字以上で 400 エラー（メッセージ「メモは500文字以内です」）
-  - API ハンドラ (3):
-    - 権限あり：保存成功 `200`
-    - 権限なし：`401 FORBIDDEN_WEBSITE_UPDATE`
-    - 未存在 website：`404 WEBSITE_NOT_FOUND`
+  - 既存エンドポイント統合 (3):
+    - 権限あり：notes 保存成功 `200`
+    - 権限なし：`401 Unauthorized`
+    - 未存在 website：`404 Not Found`
 
 #### 5.2 フロントエンド ユーティリティ テスト
 - **ファイル**: `src/tests/notes-ui.test.ts`
@@ -194,14 +188,16 @@ Tests: 102 passed (102) ← US-201 関連テストは 15 件合格
 
 ## 前フェーズテストとの関係
 
-前フェーズで作成された E2E テスト (`tests/e2e/notes.spec.ts`) に変更はありません。
+前フェーズで作成された E2E テスト (`tests/e2e/notes.spec.ts`) の対象エンドポイントが変更になりました。
 
-ただし以下を確認：
-1. テストが `POST /api/websites/{websiteId}/notes` エンドポイントを想定
+設計変更により、新規エンドポイント `POST /api/websites/{websiteId}/notes` は作成せず、既存エンドポイント `POST /api/websites/{websiteId}` で notes を処理することになりました。
+
+E2E テストの確認項目：
+1. テストが `POST /api/websites/{websiteId}` エンドポイントで notes を送信（`{ notes: "..." }` で）
 2. テストが `data-test="notes-input"` など selectors を確認
 3. テストが成功メッセージ「メモが保存されました」を確認
 
-**すべて実装で対応済み** ✅
+実装側で既存エンドポイントの notes 対応は完了済み ✅
 
 ---
 
