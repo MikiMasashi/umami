@@ -59,6 +59,7 @@ vi.mock('@/components/hooks', async () => {
       searchParams: new URLSearchParams(),
     }),
     useMobile: () => ({ isMobile: false }),
+    useConfig: () => ({}),
   };
 });
 

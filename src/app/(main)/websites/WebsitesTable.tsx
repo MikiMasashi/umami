@@ -4,6 +4,7 @@ import { DateDistance } from '@/components/common/DateDistance';
 import { LinkButton } from '@/components/common/LinkButton';
 import { SortableLabel } from '@/components/common/SortableLabel';
 import { useMessages, useNavigation } from '@/components/hooks';
+import { truncateNotes } from '@/lib/notes';
 import { SquarePen } from '@/components/icons';
 
 export interface WebsitesTableProps extends DataTableProps {
@@ -23,6 +24,24 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
         {renderLink}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
+      <DataColumn id="notes" label={<span data-test="website-notes-column">Notes</span>}>
+        {(row: any) => {
+          const notes = truncateNotes(row.notes);
+          const hasTooltip = !!row.notes && row.notes.length > notes.length;
+
+          return (
+            <span
+              data-test={`website-notes-cell-${row.id}`}
+              title={hasTooltip ? row.notes : undefined}
+            >
+              {notes}
+              {hasTooltip && (
+                <span data-test={`website-notes-tooltip-${row.id}`} title={row.notes} />
+              )}
+            </span>
+          );
+        }}
+      </DataColumn>
       <DataColumn
         id="created"
         label={
