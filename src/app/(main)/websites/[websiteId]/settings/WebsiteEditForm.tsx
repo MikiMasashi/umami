@@ -1,6 +1,7 @@
 import { Form, FormButtons, FormField, FormSubmitButton, TextField } from '@umami/react-zen';
 import { useMessages, useUpdateQuery, useWebsite } from '@/components/hooks';
 import { DOMAIN_REGEX } from '@/lib/constants';
+import { WEBSITE_NOTES_MAX_LENGTH } from '@/lib/website-notes';
 
 export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSave?: () => void }) {
   const website = useWebsite();
@@ -45,6 +46,19 @@ export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSa
         }}
       >
         <TextField />
+      </FormField>
+      <FormField
+        label="Notes"
+        data-test="input-notes"
+        name="notes"
+        rules={{
+          maxLength: {
+            value: WEBSITE_NOTES_MAX_LENGTH,
+            message: `Notes must be ${WEBSITE_NOTES_MAX_LENGTH} characters or fewer.`,
+          },
+        }}
+      >
+        <TextField asTextArea resize="vertical" />
       </FormField>
       <FormButtons>
         <FormSubmitButton data-test="button-submit" variant="primary">
