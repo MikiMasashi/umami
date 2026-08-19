@@ -1,20 +1,20 @@
-# US-201 Implementation Notes
+# US-201 実装メモ
 
-## Summary
+## 概要
 
-- Added nullable `website.notes` storage via Prisma schema and migration.
-- Extended the existing Website update API to accept `notes?: string | null`, validate the 500 character limit through zod, preserve existing notes when omitted, and normalize empty or whitespace-only input to `null`.
-- Added a notes textarea to the Website settings form and displayed notes in the Websites table only when a meaningful note exists.
-- Added unit tests for notes normalization/preview logic, API update behavior, and component coverage for the edit form and table display.
+- Prisma スキーマとマイグレーションで、NULL 許容の `website.notes` 保存領域を追加しました。
+- 既存の Website 更新 API を拡張し、`notes?: string | null` を受け付けるようにしました。zod で 500 文字上限を検証し、省略時は既存の notes を保持し、空文字や空白のみの入力は `null` に正規化します。
+- Website 設定フォームに notes 用のテキストエリアを追加し、Websites テーブルでは意味のある notes が存在する場合のみ表示するようにしました。
+- notes の正規化・プレビュー処理、API 更新処理、編集フォームとテーブル表示のコンポーネントに対するテストを追加しました。
 
-## Libraries
+## ライブラリ
 
-No libraries were added.
+追加したライブラリはありません。
 
-## Self Review
+## セルフレビュー
 
-- Backend: `notes` follows the existing Website update permission boundary (`canUpdateWebsite`) and does not introduce a separate endpoint or permission model.
-- Data: nullable `VARCHAR(500)` keeps existing website records backward-compatible without backfill.
-- Frontend: the notes input uses the existing `FormField` + `TextField asTextArea` pattern, and the list display avoids extra requests by using the existing Website row payload.
-- Validation: server-side zod validation enforces the length limit before persistence, while the form includes matching client-side max length rules for immediate feedback.
-- Scope control: no E2E tests, requirements/specification edits, dependency changes, or acceptance-criteria reads were performed.
+- バックエンド: `notes` は既存の Website 更新権限境界（`canUpdateWebsite`）に従い、別エンドポイントや別の権限モデルは追加していません。
+- データ: NULL 許容の `VARCHAR(500)` にすることで、既存の Website レコードにバックフィルを行わず後方互換性を保っています。
+- フロントエンド: notes 入力は既存の `FormField` + `TextField asTextArea` パターンを使用し、一覧表示は既存の Website 行ペイロードを使うことで追加リクエストを避けています。
+- バリデーション: サーバー側の zod 検証で永続化前に文字数上限を強制し、フォーム側にも即時フィードバック用の同等の最大文字数ルールを設定しています。
+- スコープ管理: E2E テスト、要件・仕様書の編集、依存関係の変更、受け入れ条件の読み込みは行っていません。
