@@ -5,6 +5,7 @@ import { uuid } from '@/lib/crypto';
 import { getRecorderConfig, getRecorderEnabled } from '@/lib/recorder';
 import { parseRequest } from '@/lib/request';
 import { badRequest, json, ok, serverError, unauthorized } from '@/lib/response';
+import { normalizeWebsiteNotes, WEBSITE_NOTES_MAX_LENGTH } from '@/lib/website-notes';
 import { canDeleteWebsite, canUpdateWebsite, canViewSharedWebsite } from '@/permissions';
 import {
   createShare,
@@ -43,6 +44,7 @@ export async function POST(
   const schema = z.object({
     name: z.string().max(100).optional(),
     domain: z.string().max(500).optional(),
+    notes: z.string().max(WEBSITE_NOTES_MAX_LENGTH).nullable().optional(),
     shareId: z.string().max(50).nullable().optional(),
     replayConfig: z
       .object({
@@ -65,7 +67,8 @@ export async function POST(
   }
 
   const { websiteId } = await params;
-  const { name, domain, shareId, replayConfig } = body;
+  const { name, domain, notes, shareId, replayConfig } = body;
+  const hasNotes = Object.hasOwn(body, 'notes');
 
   if (!(await canUpdateWebsite(auth, websiteId))) {
     return unauthorized();
@@ -90,6 +93,7 @@ export async function POST(
     const website = await updateWebsite(websiteId, {
       name,
       domain,
+      ...(hasNotes && { notes: normalizeWebsiteNotes(notes) }),
       ...(replayConfig !== undefined && {
         replayConfig: nextReplayConfig as Prisma.InputJsonObject,
         recorderEnabled: getRecorderEnabled(nextReplayConfig),
