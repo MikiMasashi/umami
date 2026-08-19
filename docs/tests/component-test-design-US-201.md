@@ -1,19 +1,19 @@
-# Component Test Design US-201
+# コンポーネントテスト設計 US-201
 
-## Scope
+## スコープ
 
-Component tests are route-entry tests only. They import Next.js page modules and assert observable DOM through labels, `data-test`, attributes, and text. They do not assert child component props or component decomposition.
+コンポーネントテストはルートエントリーテストのみとする。Next.jsのページモジュールをimportし、ラベル、`data-test`、属性、テキストを通じて観測可能なDOMを検証する。子コンポーネントのpropsやコンポーネント分割は検証しない。
 
-## Scenarios
+## シナリオ
 
-| ID | Page module | Scenario | Assertions |
+| ID | ページモジュール | シナリオ | アサーション |
 | --- | --- | --- | --- |
-| CT-US-201-01 | `src/app/(main)/settings/websites/[websiteId]/page.tsx` | Website edit page exposes the Notes field contract. | `input-notes` exists, label is `Notes`, control name is `notes`, saved value is rendered, `maxlength` is `500`, no validation error is shown initially. |
-| CT-US-201-02 | `src/app/(main)/settings/websites/page.tsx` | Website list page renders note summaries only for websites with notes. | `website-note-summary-{websiteId}` contains the note; unset website has no summary; no `No notes` placeholder appears. |
+| CT-US-201-01 | `src/app/(main)/settings/websites/[websiteId]/page.tsx` | Webサイト編集ページがメモフィールド契約を公開する。 | `input-notes` が存在する、ラベルが `Notes` である、コントロール名が `notes` である、保存済みの値が表示される、`maxlength` が `500` である、初期表示ではバリデーションエラーが表示されない。 |
+| CT-US-201-02 | `src/app/(main)/settings/websites/page.tsx` | Webサイト一覧ページが、メモを持つWebサイトにのみメモサマリーを表示する。 | `website-note-summary-{websiteId}` にメモが含まれる、未設定のWebサイトにはサマリーがない、`No notes` プレースホルダーが表示されない。 |
 
-## Acceptance traceability
+## 受け入れ条件との対応
 
-| Acceptance condition | Component scenarios |
+| 受け入れ条件 | コンポーネントシナリオ |
 | --- | --- |
 | US-201-1 AC1 | CT-US-201-01 |
 | US-201-1 AC2 | CT-US-201-01 |
@@ -24,11 +24,11 @@ Component tests are route-entry tests only. They import Next.js page modules and
 | US-201-2 AC3 | CT-US-201-02 |
 | US-201-3 AC1 | CT-US-201-01 |
 | US-201-3 AC2 | CT-US-201-01 |
-| US-201-3 AC3 | Not a component concern; covered by E2E/API scenario. |
-| US-201-4 AC1 | Not a component concern; covered by E2E/API scenario. |
-| US-201-4 AC2 | Not a component concern; covered by E2E/API scenario. |
+| US-201-3 AC3 | コンポーネントの関心事ではない。E2E/APIシナリオでカバーする。 |
+| US-201-4 AC1 | コンポーネントの関心事ではない。E2E/APIシナリオでカバーする。 |
+| US-201-4 AC2 | コンポーネントの関心事ではない。E2E/APIシナリオでカバーする。 |
 | US-201-4 AC3 | CT-US-201-01 |
 
-## Review notes
+## レビュー観点
 
-The tests mock data hooks rather than child components. This keeps the route entry point under test while avoiding live network dependency and preserving implementation freedom for internal component splits.
+テストは子コンポーネントではなくデータフックをmockする。これにより、ルートエントリーポイントをテスト対象に保ちながら、実ネットワークへの依存を避け、内部のコンポーネント分割に対する実装自由度を維持する。

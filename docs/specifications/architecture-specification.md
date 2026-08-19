@@ -1,78 +1,78 @@
-# Architecture Specification
+# アーキテクチャ仕様
 
-## US-201 Website notes
+## US-201 Webサイトメモ
 
-### Architecture decision
+### アーキテクチャ決定
 
-Website notes are implemented as a new nullable field on the existing Website aggregate and flow through the existing Settings > Websites page, website update API, Prisma query layer, and website list query layer. This keeps notes inside the current website settings boundary and reuses existing authentication, authorization, caching, and modified-key invalidation.
+Webサイトメモは、既存の `Website` 集約に追加する新しいnullableフィールドとして実装し、既存の「Settings > Websites」画面、Webサイト更新API、Prismaクエリ層、Webサイト一覧クエリ層を通じて扱う。これにより、メモを現在のWebサイト設定境界内に収め、既存の認証、認可、キャッシュ、modified keyによる無効化を再利用する。
 
-### Component and data flow
+### コンポーネントとデータフロー
 
-1. The website edit page loads a website through the existing website query and renders a `Notes` textarea as part of the website settings form.
-2. Submitting the form sends `notes` to `POST /api/websites/{websiteId}` with the existing name/domain update payload.
-3. The route handler validates length, normalizes blank input to `null`, checks the existing website update permission, and persists the field.
-4. Successful updates return the website including `notes`, then touch the existing `websites` and `website:{websiteId}` modified keys.
-5. The Settings > Websites list receives `notes` in the existing website row data and renders a summary only when the value is non-empty.
+1. Webサイト編集ページは既存のWebサイトクエリで対象Webサイトを読み込み、Webサイト設定フォームの一部として `Notes` のtextareaを表示する。
+2. フォーム送信時は、既存のname/domain更新ペイロードとともに `notes` を `POST /api/websites/{websiteId}` へ送信する。
+3. ルートハンドラーは文字数を検証し、空白のみの入力を `null` に正規化し、既存のWebサイト更新権限を確認してからフィールドを保存する。
+4. 更新成功時は `notes` を含むWebサイトを返し、既存の `websites` と `website:{websiteId}` のmodified keyを更新する。
+5. 「Settings > Websites」の一覧は既存のWebサイト行データで `notes` を受け取り、値が空でない場合のみサマリーを表示する。
 
-### UI contract
+### UI契約
 
-The edit form uses a plain textarea labelled `Notes`. The list summary is plain text and may be visually truncated for readability; full persistence and API values are not truncated.
+編集フォームでは、`Notes` ラベル付きの通常のtextareaを使用する。一覧のサマリーはプレーンテキストとして表示し、読みやすさのために視覚的に省略してもよい。ただし、永続化される値とAPI値は省略しない。
 
-### Testability contract
+### テスタビリティ契約
 
-This section is the external contract for reviewed E2E and component tests. It intentionally fixes only observable URL, DOM, and HTTP behavior. It does not constrain child component decomposition or props signatures.
+このセクションは、レビュー対象のE2Eテストおよびコンポーネントテストに対する外部契約である。意図的に、観測可能なURL、DOM、HTTPの挙動のみを固定する。子コンポーネントの分割やpropsシグネチャは制約しない。
 
-#### Routing
+#### ルーティング
 
-| Route | Page module | Purpose |
+| ルート | ページモジュール | 目的 |
 | --- | --- | --- |
-| `/settings/websites` | `src/app/(main)/settings/websites/page.tsx` | Settings website list showing note summaries. |
-| `/settings/websites/{websiteId}` | `src/app/(main)/settings/websites/[websiteId]/page.tsx` | Settings website edit entry point for route-level component tests. |
-| `/websites/{websiteId}/settings` | `src/app/(main)/websites/[websiteId]/settings/page.tsx` | In-app edit route reached from the website settings list edit action. |
+| `/settings/websites` | `src/app/(main)/settings/websites/page.tsx` | メモサマリーを表示する設定用Webサイト一覧。 |
+| `/settings/websites/{websiteId}` | `src/app/(main)/settings/websites/[websiteId]/page.tsx` | ルートレベルのコンポーネントテスト向けWebサイト編集エントリーポイント。 |
+| `/websites/{websiteId}/settings` | `src/app/(main)/websites/[websiteId]/settings/page.tsx` | Webサイト設定一覧の編集アクションから到達するアプリ内編集ルート。 |
 
-#### `data-test` naming convention
+#### `data-test` 命名規則
 
-Use kebab-case and prefix by role:
+kebab-caseを使用し、役割ごとの接頭辞を付ける。
 
-| Prefix | Usage |
+| 接頭辞 | 用途 |
 | --- | --- |
-| `input-*` | Form input wrapper. |
-| `button-*` | Clickable action button. |
-| `website-note-*` | Website note display surface. |
+| `input-*` | フォーム入力ラッパー。 |
+| `button-*` | クリック可能なアクションボタン。 |
+| `website-note-*` | Webサイトメモの表示領域。 |
 
-US-201 selectors:
+US-201のセレクタ:
 
-| Selector | Element |
+| セレクタ | 要素 |
 | --- | --- |
-| `input-notes` | Notes textarea form field wrapper. The contained control is a `textarea`. |
-| `button-submit` | Existing website settings save button. |
-| `website-note-summary-{websiteId}` | Website list note summary for a specific website. Omitted entirely when notes are unset. |
+| `input-notes` | メモ用textareaフォームフィールドのラッパー。内包するコントロールは `textarea`。 |
+| `button-submit` | 既存のWebサイト設定保存ボタン。 |
+| `website-note-summary-{websiteId}` | 特定Webサイトに対するWebサイト一覧上のメモサマリー。メモ未設定時は要素自体を出力しない。 |
 
-#### Form field identifiers
+#### フォームフィールド識別子
 
-| Field | HTML name | Label | Control |
+| フィールド | HTML name | ラベル | コントロール |
 | --- | --- | --- | --- |
-| Website note | `notes` | `Notes` | `textarea` with `maxlength="500"` |
+| Webサイトメモ | `notes` | `Notes` | `maxlength="500"` を持つ `textarea` |
 
-#### UI messages
+#### UIメッセージ
 
-| Situation | Message |
+| 状況 | メッセージ |
 | --- | --- |
-| Notes exceed 500 characters | `Notes must be 500 characters or fewer.` |
-| Successful save | Existing saved toast message (`Saved`) |
-| Unset notes on list | No note text and no placeholder are rendered. |
+| メモが500文字を超える | `Notes must be 500 characters or fewer.` |
+| 保存成功 | 既存の保存完了トーストメッセージ（`Saved`） |
+| 一覧でメモが未設定 | メモ文言もプレースホルダーも表示しない。 |
 
-#### HTTP contract
+#### HTTP契約
 
-| Request | Success | Error |
+| リクエスト | 成功 | エラー |
 | --- | --- | --- |
-| `POST /api/websites/{websiteId}` with `notes` length <= 500 | `200`, updated website with `notes` string or `null` | N/A |
-| `POST /api/websites/{websiteId}` with `notes` length >= 501 | N/A | `400`, `{ "error": { "message": "Notes must be 500 characters or fewer.", "code": "validation-error", "status": 400, "field": "notes" } }` |
-| `POST /api/websites/{websiteId}` without update permission | N/A | `401`, `{ "error": { "message": "Unauthorized", "code": "unauthorized", "status": 401 } }` |
+| `notes` の長さが500文字以下の `POST /api/websites/{websiteId}` | `200`、`notes` が文字列または `null` の更新後Webサイト | 該当なし |
+| `notes` の長さが501文字以上の `POST /api/websites/{websiteId}` | 該当なし | `400`、`{ "error": { "message": "Notes must be 500 characters or fewer.", "code": "validation-error", "status": 400, "field": "notes" } }` |
+| 更新権限なしの `POST /api/websites/{websiteId}` | 該当なし | `401`、`{ "error": { "message": "Unauthorized", "code": "unauthorized", "status": 401 } }` |
 
-#### Component test entry points
+#### コンポーネントテストのエントリーポイント
 
-| Test target | Page module |
+| テスト対象 | ページモジュール |
 | --- | --- |
-| Website edit page | `src/app/(main)/settings/websites/[websiteId]/page.tsx` |
-| Website list page | `src/app/(main)/settings/websites/page.tsx` |
+| Webサイト編集ページ | `src/app/(main)/settings/websites/[websiteId]/page.tsx` |
+| Webサイト一覧ページ | `src/app/(main)/settings/websites/page.tsx` |

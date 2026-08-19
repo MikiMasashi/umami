@@ -1,24 +1,24 @@
-# API Specification
+# API 仕様
 
-## US-201 Website notes
+## US-201 Webサイトメモ
 
-### Rationale
+### 背景
 
-Website notes are part of website settings, so they reuse the existing website API and update authorization. This keeps the feature compatible with current Settings > Websites flows and avoids a note-specific permission model.
+WebサイトメモはWebサイト設定の一部として扱うため、既存のWebサイトAPIと更新権限を再利用する。これにより、現在の「Settings > Websites」の導線と互換性を保ち、メモ専用の権限モデルを追加しない。
 
-### Website resource shape
+### Webサイトリソースの形式
 
-`Website` responses returned by `GET /api/websites/{websiteId}`, `POST /api/websites/{websiteId}`, and website list APIs include:
+`GET /api/websites/{websiteId}`、`POST /api/websites/{websiteId}`、およびWebサイト一覧APIが返す `Website` レスポンスには、以下を含める。
 
-| Field | Type | Required | Notes |
+| フィールド | 型 | 必須 | 備考 |
 | --- | --- | --- | --- |
-| `notes` | `string \| null` | yes | Plain text note. `null` means unset. Maximum 500 characters when non-null. |
+| `notes` | `string \| null` | はい | プレーンテキストのメモ。`null` は未設定を表す。非 `null` の場合は最大500文字。 |
 
-Existing fields such as `id`, `name`, `domain`, `createdAt`, `updatedAt`, `teamId`, `shareId`, `recorderEnabled`, and `replayConfig` keep their current behavior.
+`id`、`name`、`domain`、`createdAt`、`updatedAt`、`teamId`、`shareId`、`recorderEnabled`、`replayConfig` などの既存フィールドは、現在の挙動を維持する。
 
-### Update website
+### Webサイト更新
 
-`POST /api/websites/{websiteId}` accepts the existing website update body plus an optional `notes` field.
+`POST /api/websites/{websiteId}` は、既存のWebサイト更新ボディに加えて任意の `notes` フィールドを受け付ける。
 
 ```json
 {
@@ -28,33 +28,33 @@ Existing fields such as `id`, `name`, `domain`, `createdAt`, `updatedAt`, `teamI
 }
 ```
 
-Processing rules:
+処理ルール:
 
-1. If `notes` is omitted, the existing note is unchanged.
-2. If `notes.trim()` is an empty string, persist `notes` as `null`.
-3. If `notes` contains non-whitespace text and has length from 1 to 500 characters, persist the original text as a plain string.
-4. If `notes` has 501 or more characters, reject the request before persistence.
-5. Authorization uses the existing `canUpdateWebsite(auth, websiteId)` rule.
+1. `notes` が省略された場合、既存のメモは変更しない。
+2. `notes.trim()` が空文字列の場合、`notes` は `null` として保存する。
+3. `notes` に空白以外の文字が含まれ、長さが1文字以上500文字以下の場合、元のテキストをプレーン文字列として保存する。
+4. `notes` が501文字以上の場合、保存前にリクエストを拒否する。
+5. 認可は既存の `canUpdateWebsite(auth, websiteId)` ルールを使用する。
 
-Success response: HTTP `200` with the updated website resource, including `notes`.
+成功レスポンス: HTTP `200` で、`notes` を含む更新後のWebサイトリソースを返す。
 
-### Error responses
+### エラーレスポンス
 
-All errors use the existing `error` envelope.
+すべてのエラーは既存の `error` エンベロープを使用する。
 
-| Case | HTTP status | Response body |
+| ケース | HTTPステータス | レスポンスボディ |
 | --- | --- | --- |
-| Note exceeds 500 characters | `400` | `{ "error": { "message": "Notes must be 500 characters or fewer.", "code": "validation-error", "status": 400, "field": "notes" } }` |
-| Authenticated principal cannot update the website | `401` | `{ "error": { "message": "Unauthorized", "code": "unauthorized", "status": 401 } }` |
-| Website does not exist | `400` | `{ "error": { "message": "Website not found.", "code": "bad-request", "status": 400 } }` |
+| メモが500文字を超える | `400` | `{ "error": { "message": "Notes must be 500 characters or fewer.", "code": "validation-error", "status": 400, "field": "notes" } }` |
+| 認証済み主体にWebサイト更新権限がない | `401` | `{ "error": { "message": "Unauthorized", "code": "unauthorized", "status": 401 } }` |
+| Webサイトが存在しない | `400` | `{ "error": { "message": "Website not found.", "code": "bad-request", "status": 400 } }` |
 
-### List websites
+### Webサイト一覧
 
-Website list endpoints that power Settings > Websites include `notes` in each row object:
+「Settings > Websites」を構成するWebサイト一覧エンドポイントは、各行オブジェクトに `notes` を含める。
 
 - `GET /api/me/websites`
 - `GET /api/users/{userId}/websites`
 - `GET /api/teams/{teamId}/websites`
 - `GET /api/admin/websites`
 
-The API returns the full note value. UI truncation is a presentation concern.
+APIはメモの全文を返す。UIでの省略表示はプレゼンテーション層の責務とする。

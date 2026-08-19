@@ -1,20 +1,20 @@
-# Data Specification
+# データ仕様
 
-## US-201 Website notes
+## US-201 Webサイトメモ
 
-### Domain model
+### ドメインモデル
 
-`Website` gains an optional note:
+`Website` に任意のメモを追加する。
 
-| Field | Type | Invariant |
+| フィールド | 型 | 不変条件 |
 | --- | --- | --- |
-| `notes` | `string \| null` | `null` means unset. Non-null values are plain text and must be 1-500 characters. |
+| `notes` | `string \| null` | `null` は未設定を表す。非 `null` の値はプレーンテキストで、1文字以上500文字以下でなければならない。 |
 
-Whitespace-only input is normalized to `null` by the application layer before persistence. Notes are treated as plain text and must be rendered through React text nodes or equivalent escaped output.
+空白のみの入力は、永続化前にアプリケーション層で `null` に正規化する。メモはプレーンテキストとして扱い、Reactのテキストノードまたは同等にエスケープされた出力を通じて表示しなければならない。
 
-### Database schema
+### データベーススキーマ
 
-Add a nullable column to the existing website table and Prisma `Website` model:
+既存のWebサイトテーブルとPrismaの `Website` モデルにnullableカラムを追加する。
 
 ```prisma
 model Website {
@@ -23,18 +23,18 @@ model Website {
 }
 ```
 
-SQL migration intent:
+SQLマイグレーションの意図:
 
 ```sql
 alter table website add column notes varchar(500);
 ```
 
-No index is required because US-201 explicitly excludes searching, filtering, or sorting by note.
+US-201ではメモによる検索、フィルタリング、ソートを明示的に対象外としているため、インデックスは不要。
 
-### Backward compatibility
+### 後方互換性
 
-Existing website rows receive `notes = null`, so current websites remain valid and can be listed, viewed, edited, and deleted without data migration backfill. The API serializes unset notes as `null`; the UI suppresses list placeholders for `null` and empty normalized values.
+既存のWebサイト行は `notes = null` となるため、現在のWebサイトはデータ移行のバックフィルなしで、一覧表示、表示、編集、削除を引き続き行える。APIは未設定のメモを `null` としてシリアライズし、UIは `null` および正規化後の空値に対して一覧プレースホルダーを表示しない。
 
-### Data integrity
+### データ整合性
 
-The database column length and server-side zod validation both enforce the 500-character maximum. The server validates before calling the update query so an invalid 501-character value does not overwrite an existing valid note.
+データベースカラム長とサーバー側のzodバリデーションの両方で、最大500文字を強制する。サーバーは更新クエリを呼び出す前に検証するため、501文字の不正な値で既存の有効なメモが上書きされることはない。
