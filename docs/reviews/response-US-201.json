@@ -1,6 +1,6 @@
 [
   {
     "ref": "C1",
-    "reply": "ご指摘のとおり修正しました。docs/implementation/implementation-notes-US-201.md の見出しと本文を日本語に変更しています。"
+    "reply": "ご指摘のとおり修正しました。notes 未設定ケースのテストデータを安定化し、500文字超過ケースは実際のUI挙動に合わせて Save ボタン disabled と API 400 を検証するよう変更し、E2E 4件すべてPassの結果へ更新しています。"
   }
 ]

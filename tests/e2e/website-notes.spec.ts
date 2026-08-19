@@ -51,6 +51,7 @@ test.describe('Website notes E2E', () => {
       auth,
       websiteName,
       `notes-${unique}.example.com`,
+      { notes: null },
     );
 
     await page.goto(`/websites/${websiteId}/settings`);
@@ -101,10 +102,11 @@ test.describe('Website notes E2E', () => {
   }) => {
     const auth = await loginPage(page, request);
     const unique = uniqueSuffix();
+    const websiteName = `US-201 limit ${unique}`;
     const websiteId = await createWebsite(
       request,
       auth,
-      `US-201 limit ${unique}`,
+      websiteName,
       `limit-${unique}.example.com`,
       { notes: existingNotes },
     );
@@ -112,9 +114,7 @@ test.describe('Website notes E2E', () => {
 
     await page.goto(`/websites/${websiteId}/settings`);
     await page.getByTestId('input-notes').locator('textarea').fill(tooLongNotes);
-    await page.getByTestId('button-submit').click();
-
-    await expect(page.getByText('Notes must be 500 characters or fewer.')).toBeVisible();
+    await expect(page.getByTestId('button-submit')).toBeDisabled();
 
     const rejectedResponse = await request.post(`/api/websites/${websiteId}`, {
       headers: authHeaders(auth),
