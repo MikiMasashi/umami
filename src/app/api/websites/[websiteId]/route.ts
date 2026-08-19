@@ -5,6 +5,11 @@ import { uuid } from '@/lib/crypto';
 import { getRecorderConfig, getRecorderEnabled } from '@/lib/recorder';
 import { parseRequest } from '@/lib/request';
 import { badRequest, json, ok, serverError, unauthorized } from '@/lib/response';
+import {
+  isWebsiteNotesValid,
+  normalizeWebsiteNotes,
+  WEBSITE_NOTES_TOO_LONG_MESSAGE,
+} from '@/lib/website-notes';
 import { canDeleteWebsite, canUpdateWebsite, canViewSharedWebsite } from '@/permissions';
 import {
   createShare,
@@ -43,6 +48,7 @@ export async function POST(
   const schema = z.object({
     name: z.string().max(100).optional(),
     domain: z.string().max(500).optional(),
+    notes: z.string().nullable().optional(),
     shareId: z.string().max(50).nullable().optional(),
     replayConfig: z
       .object({
@@ -65,10 +71,18 @@ export async function POST(
   }
 
   const { websiteId } = await params;
-  const { name, domain, shareId, replayConfig } = body;
+  const { name, domain, notes, shareId, replayConfig } = body;
 
   if (!(await canUpdateWebsite(auth, websiteId))) {
     return unauthorized();
+  }
+
+  if (!isWebsiteNotesValid(notes)) {
+    return badRequest({
+      message: WEBSITE_NOTES_TOO_LONG_MESSAGE,
+      code: 'validation-error',
+      field: 'notes',
+    });
   }
 
   try {
@@ -90,6 +104,7 @@ export async function POST(
     const website = await updateWebsite(websiteId, {
       name,
       domain,
+      ...(notes !== undefined && { notes: normalizeWebsiteNotes(notes) }),
       ...(replayConfig !== undefined && {
         replayConfig: nextReplayConfig as Prisma.InputJsonObject,
         recorderEnabled: getRecorderEnabled(nextReplayConfig),
