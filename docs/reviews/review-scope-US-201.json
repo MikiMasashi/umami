@@ -1,0 +1,99 @@
+{
+  "story": "US-201",
+  "targets": [
+    {
+      "path": "prisma/schema.prisma",
+      "decision": "review",
+      "acceptance_criteria": ["US-201-1 AC1", "US-201-1 AC2", "US-201-1 AC4", "US-201-3 AC2", "US-201-3 AC3"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::saves a 500-character-or-shorter note from the edit page and shows it after reload",
+        "tests/e2e/website-notes.spec.ts::rejects notes longer than 500 characters in the UI and API without overwriting the saved note",
+        "tests/e2e/website-notes.spec.ts::normalizes blank notes to unset and prevents direct updates without update permission"
+      ],
+      "reason": "DBスキーマ変更は永続化の基盤であり、構造変更として人間レビュー対象。"
+    },
+    {
+      "path": "prisma/migrations/21_add_website_notes/migration.sql",
+      "decision": "review",
+      "acceptance_criteria": ["US-201-1 AC1", "US-201-1 AC2", "US-201-1 AC4", "US-201-3 AC2", "US-201-3 AC3"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::saves a 500-character-or-shorter note from the edit page and shows it after reload",
+        "tests/e2e/website-notes.spec.ts::normalizes blank notes to unset and prevents direct updates without update permission"
+      ],
+      "reason": "DBマイグレーションは環境・永続化に影響するため人間レビュー対象。"
+    },
+    {
+      "path": "src/app/api/websites/[websiteId]/route.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-1 AC1", "US-201-1 AC4", "US-201-3 AC1", "US-201-3 AC2", "US-201-3 AC3", "US-201-4 AC1", "US-201-4 AC2", "US-201-4 AC3"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::saves a 500-character-or-shorter note from the edit page and shows it after reload",
+        "tests/e2e/website-notes.spec.ts::rejects notes longer than 500 characters in the UI and API without overwriting the saved note",
+        "tests/e2e/website-notes.spec.ts::normalizes blank notes to unset and prevents direct updates without update permission"
+      ],
+      "reason": "メモ保存、空白正規化、上限拒否、既存値保護、認可拒否がレビュー済みE2Eで検証済み。"
+    },
+    {
+      "path": "src/app/(main)/websites/[websiteId]/settings/WebsiteEditForm.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-1 AC1", "US-201-1 AC2", "US-201-1 AC3", "US-201-1 AC4", "US-201-3 AC1", "US-201-3 AC2", "US-201-4 AC3"],
+      "covered_by": [
+        "src/component-tests/website-notes-page.test.tsx::US-201 edit page exposes the Notes field with the saved value and 500 character contract",
+        "tests/e2e/website-notes.spec.ts::saves a 500-character-or-shorter note from the edit page and shows it after reload",
+        "tests/e2e/website-notes.spec.ts::rejects notes longer than 500 characters in the UI and API without overwriting the saved note"
+      ],
+      "reason": "メモ欄のDOM契約、保存済み値、maxlength、保存・再読み込み、UI上限メッセージがレビュー済みテストで検証済み。"
+    },
+    {
+      "path": "src/app/(main)/websites/WebsitesTable.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-1 AC4", "US-201-2 AC1", "US-201-2 AC2", "US-201-2 AC3"],
+      "covered_by": [
+        "src/component-tests/website-notes-page.test.tsx::US-201 websites list page renders note summaries only for websites with notes",
+        "tests/e2e/website-notes.spec.ts::shows note summaries only for websites that have notes on the websites list"
+      ],
+      "reason": "メモあり行のみサマリー表示し、未設定行に要素やプレースホルダーを出さないことがレビュー済みテストで検証済み。"
+    },
+    {
+      "path": "src/lib/website-notes.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-1 AC4", "US-201-3 AC1", "US-201-3 AC2", "US-201-3 AC3"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::rejects notes longer than 500 characters in the UI and API without overwriting the saved note",
+        "tests/e2e/website-notes.spec.ts::normalizes blank notes to unset and prevents direct updates without update permission"
+      ],
+      "reason": "正規化と上限判定の振る舞いがAPI/UI経由のレビュー済みE2Eで検証済み。"
+    },
+    {
+      "path": "src/tests/website-notes.test.ts",
+      "decision": "review",
+      "acceptance_criteria": ["US-201-1 AC4", "US-201-3 AC2", "US-201-3 AC3"],
+      "covered_by": [
+        "src/tests/website-notes.test.ts::normalizes omitted and blank notes for update payloads",
+        "src/tests/website-notes.test.ts::accepts notes at the 500 character boundary and rejects longer notes"
+      ],
+      "reason": "このフェーズで追加した未レビューのユニットテストのため人間レビュー対象。"
+    },
+    {
+      "path": "docs/implementation/implementation-notes-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "実装メモとセルフレビュー文書の追加。"
+    },
+    {
+      "path": "docs/reviews/review-scope-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "レビュー範囲申告文書の追加。"
+    },
+    {
+      "path": "docs/reviews/review-scope-US-201.json",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "レビュー範囲申告の機械可読版。"
+    }
+  ]
+}

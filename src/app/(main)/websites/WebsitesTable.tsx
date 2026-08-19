@@ -1,4 +1,4 @@
-import { DataColumn, DataTable, type DataTableProps, Icon } from '@umami/react-zen';
+import { Column, DataColumn, DataTable, type DataTableProps, Icon, Text } from '@umami/react-zen';
 import type { ReactNode } from 'react';
 import { DateDistance } from '@/components/common/DateDistance';
 import { LinkButton } from '@/components/common/LinkButton';
@@ -20,7 +20,25 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
   return (
     <DataTable {...props}>
       <DataColumn id="name" label={<SortableLabel label={t(labels.name)} sortKey="name" />}>
-        {renderLink}
+        {(row: any) => (
+          <Column gap="1">
+            {renderLink?.(row)}
+            {row.notes && (
+              <Text
+                color="muted"
+                size="sm"
+                data-test={`website-note-summary-${row.id}`}
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {row.notes}
+              </Text>
+            )}
+          </Column>
+        )}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
       <DataColumn
