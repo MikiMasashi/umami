@@ -1,4 +1,6 @@
 import { Column } from '@umami/react-zen';
+import { SectionHeader } from '@/components/common/SectionHeader';
+import { useMessages } from '@/components/hooks';
 import { Panel } from '@/components/common/Panel';
 import { WebsiteData } from './WebsiteData';
 import { WebsiteEditForm } from './WebsiteEditForm';
@@ -7,8 +9,11 @@ import { WebsiteShareForm } from './WebsiteShareForm';
 import { WebsiteTrackingCode } from './WebsiteTrackingCode';
 
 export function WebsiteSettings({ websiteId }: { websiteId: string; openExternal?: boolean }) {
+  const { t, labels } = useMessages();
+
   return (
     <Column gap="6">
+      <SectionHeader title={t(labels.details)} />
       <Panel>
         <WebsiteEditForm websiteId={websiteId} />
       </Panel>

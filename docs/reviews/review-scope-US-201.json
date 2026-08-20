@@ -1,0 +1,159 @@
+{
+  "story": "US-201",
+  "targets": [
+    {
+      "path": "prisma/schema.prisma",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02", "AC-201-07"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings",
+        "tests/e2e/website-notes.spec.ts::AC-201-03 & AC-201-07: notes shown only when set; notes-null website remains stable"
+      ],
+      "reason": "notes カラム追加の利用結果（保存/更新/既存互換）はレビュー済み E2E で検証済み"
+    },
+    {
+      "path": "prisma/migrations/21_add_website_notes/migration.sql",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02", "AC-201-07"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings",
+        "tests/e2e/website-notes.spec.ts::AC-201-03 & AC-201-07: notes shown only when set; notes-null website remains stable"
+      ],
+      "reason": "DB 反映結果（永続化・更新・既存互換）はレビュー済み E2E で検証済み"
+    },
+    {
+      "path": "src/app/api/websites/route.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-03", "AC-201-07"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-03 & AC-201-07: notes shown only when set; notes-null website remains stable"
+      ],
+      "reason": "作成 API での notes 受理と一覧反映はレビュー済み E2E で検証済み"
+    },
+    {
+      "path": "src/app/api/websites/[websiteId]/route.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02", "AC-201-05", "AC-201-06"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings",
+        "tests/e2e/website-notes.spec.ts::AC-201-05: rejects notes longer than 500 chars",
+        "tests/e2e/website-notes.spec.ts::AC-201-06: unauthorized user cannot update notes"
+      ],
+      "reason": "更新 API の保存・上限・認可はレビュー済み E2E で検証済み"
+    },
+    {
+      "path": "src/app/(main)/websites/[websiteId]/settings/WebsiteEditForm.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02", "AC-201-05"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings",
+        "tests/e2e/website-notes.spec.ts::AC-201-05: rejects notes longer than 500 chars",
+        "src/component-tests/us201-website-notes-page.test.tsx::CT-201-01: settings route provides notes input field",
+        "src/component-tests/us201-website-notes-page.test.tsx::CT-201-02: settings route shows over-limit validation message"
+      ],
+      "reason": "入力欄・保存・上限エラー表示はレビュー済み E2E/コンポーネントで検証済み"
+    },
+    {
+      "path": "src/app/(main)/websites/WebsitesTable.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-02", "AC-201-03", "AC-201-04", "AC-201-07"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings",
+        "tests/e2e/website-notes.spec.ts::AC-201-03 & AC-201-07: notes shown only when set; notes-null website remains stable",
+        "tests/e2e/website-notes.spec.ts::AC-201-04: long notes are truncated in website list",
+        "src/component-tests/us201-website-notes-page.test.tsx::CT-201-03: websites route shows notes only when notes are set",
+        "src/component-tests/us201-website-notes-page.test.tsx::CT-201-04: websites route truncates long notes preview"
+      ],
+      "reason": "一覧の notes 表示/非表示/省略表示と編集導線はレビュー済み E2E/コンポーネントで検証済み"
+    },
+    {
+      "path": "src/app/(main)/settings/websites/page.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings"
+      ],
+      "reason": "US-201 の編集導線 /settings/websites はレビュー済み E2E シナリオで通過済み"
+    },
+    {
+      "path": "src/app/(main)/settings/websites/WebsitesSettingsPage.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings"
+      ],
+      "reason": "/settings/websites 表示経路はレビュー済み E2E シナリオで通過済み"
+    },
+    {
+      "path": "src/app/(main)/websites/[websiteId]/settings/WebsiteSettings.tsx",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-01", "AC-201-02"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-01: persists notes after save and reload",
+        "tests/e2e/website-notes.spec.ts::AC-201-02: updates notes and reflects on list and settings"
+      ],
+      "reason": "設定画面到達と編集継続可能性はレビュー済み E2E シナリオで検証済み"
+    },
+    {
+      "path": "src/components/messages.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "メッセージキー定義はレビュー済みテストの直接担保外"
+    },
+    {
+      "path": "src/lib/website-notes.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["AC-201-03", "AC-201-04", "AC-201-07"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::AC-201-03 & AC-201-07: notes shown only when set; notes-null website remains stable",
+        "tests/e2e/website-notes.spec.ts::AC-201-04: long notes are truncated in website list",
+        "src/component-tests/us201-website-notes-page.test.tsx::CT-201-03: websites route shows notes only when notes are set",
+        "src/component-tests/us201-website-notes-page.test.tsx::CT-201-04: websites route truncates long notes preview"
+      ],
+      "reason": "一覧向け notes 整形の振る舞いはレビュー済み E2E/コンポーネントで観測可能"
+    },
+    {
+      "path": "src/tests/website-notes.test.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "このフェーズで追加した未レビューのユニットテスト"
+    },
+    {
+      "path": "vitest.config.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "テスト設定変更はルール上常に review 対象"
+    },
+    {
+      "path": "docs/implementation/implementation-notes-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "このフェーズで新規作成した実装メモ"
+    },
+    {
+      "path": "docs/reviews/review-scope-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "このフェーズで新規作成したレビュー提案文書"
+    },
+    {
+      "path": "docs/reviews/review-scope-US-201.json",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "このフェーズで新規作成した機械可読レビュー提案"
+    }
+  ]
+}

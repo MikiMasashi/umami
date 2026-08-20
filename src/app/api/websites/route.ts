@@ -6,6 +6,7 @@ import { getQueryFilters, parseRequest } from '@/lib/request';
 import { json, unauthorized } from '@/lib/response';
 import { pagingParams, searchParams, sortingParams } from '@/lib/schema';
 import { getCloudWebsiteLimit } from '@/lib/subscription';
+import { WEBSITE_NOTES_MAX_LENGTH } from '@/lib/website-notes';
 import { canCreateTeamWebsite, canCreateWebsite } from '@/permissions';
 import { createShare, createWebsite, getTeamWebsiteCount, getWebsiteCount } from '@/queries/prisma';
 import { getAllUserWebsitesIncludingTeamAccess, getUserWebsites } from '@/queries/prisma/website';
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
   const schema = z.object({
     name: z.string().max(100),
     domain: z.string().max(500),
+    notes: z.string().max(WEBSITE_NOTES_MAX_LENGTH).nullable().optional(),
     shareId: z.string().max(50).nullable().optional(),
     teamId: z.uuid().nullable().optional(),
     id: z.uuid().nullable().optional(),
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
     return error();
   }
 
-  const { id, name, domain, shareId, teamId } = body;
+  const { id, name, domain, notes, shareId, teamId } = body;
 
   if (process.env.CLOUD_MODE) {
     const account = teamId ? await fetchTeam(teamId) : await fetchAccount(auth.user.id);
@@ -76,6 +78,7 @@ export async function POST(request: Request) {
     createdBy: auth.user.id,
     name,
     domain,
+    notes,
     teamId,
   };
 

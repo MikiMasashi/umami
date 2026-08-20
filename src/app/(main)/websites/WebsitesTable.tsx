@@ -1,10 +1,11 @@
-import { DataColumn, DataTable, type DataTableProps, Icon } from '@umami/react-zen';
+import { Column, DataColumn, DataTable, type DataTableProps, Icon, Text } from '@umami/react-zen';
 import type { ReactNode } from 'react';
 import { DateDistance } from '@/components/common/DateDistance';
 import { LinkButton } from '@/components/common/LinkButton';
 import { SortableLabel } from '@/components/common/SortableLabel';
 import { useMessages, useNavigation } from '@/components/hooks';
 import { SquarePen } from '@/components/icons';
+import { getWebsiteNotesPreview } from '@/lib/website-notes';
 
 export interface WebsitesTableProps extends DataTableProps {
   showActions?: boolean;
@@ -17,10 +18,28 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
   const { t, labels } = useMessages();
   const { renderUrl } = useNavigation();
 
+  const renderNameWithNotes = (row: any) => {
+    const notesPreview = getWebsiteNotesPreview(row.notes);
+
+    return (
+      <Column gap="1">
+        {renderLink?.(row)}
+        {notesPreview && (
+          <Text data-test={`website-notes-preview-${row.id}`}>
+            <span data-test="website-notes-preview">
+              <span>{notesPreview.text}</span>
+              <span>...</span>
+            </span>
+          </Text>
+        )}
+      </Column>
+    );
+  };
+
   return (
     <DataTable {...props}>
       <DataColumn id="name" label={<SortableLabel label={t(labels.name)} sortKey="name" />}>
-        {renderLink}
+        {renderNameWithNotes}
       </DataColumn>
       <DataColumn id="domain" label={<SortableLabel label={t(labels.domain)} sortKey="domain" />} />
       <DataColumn
@@ -38,7 +57,12 @@ export function WebsitesTable({ showActions, renderLink, ...props }: WebsitesTab
             const websiteId = row.id;
 
             return (
-              <LinkButton href={renderUrl(`/websites/${websiteId}/settings`)} variant="quiet">
+              <LinkButton
+                href={renderUrl(`/websites/${websiteId}/settings`)}
+                variant="quiet"
+                asAnchor
+                data-test="link-button-edit"
+              >
                 <Icon>
                   <SquarePen />
                 </Icon>
