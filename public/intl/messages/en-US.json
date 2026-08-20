@@ -388,6 +388,7 @@
     "website": "Website",
     "website-id": "Website ID",
     "websites": "Websites",
+    "notes": "Notes",
     "window": "Window",
     "yesterday": "Yesterday"
   },
@@ -409,6 +410,7 @@
     "go-to-settings": "Go to settings",
     "incorrect-username-password": "Incorrect username and/or password.",
     "invalid-domain": "Invalid domain. Do not include http/https.",
+    "max-notes-length": "Notes must be {max} characters or fewer.",
     "min-password-length": "Minimum length of {n} characters",
     "new-version-available": "A new version of Umami {version} is available!",
     "no-data-available": "No data available.",
