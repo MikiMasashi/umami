@@ -3,6 +3,7 @@
 ## US-201: Website Notes
 
 ### 1. 対象 API
+- 本仕様で扱うエンドポイントは**すべて既存 API**であり、新規エンドポイントの追加はありません。
 - `POST /api/websites`（Website 作成）
 - `POST /api/websites/{websiteId}`（Website 更新）
 - `GET /api/websites`
