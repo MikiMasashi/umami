@@ -46,6 +46,19 @@ export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSa
       >
         <TextField />
       </FormField>
+      <FormField
+        label={t(labels.notes)}
+        data-test="input-notes"
+        name="notes"
+        rules={{
+          maxLength: {
+            value: 500,
+            message: t(messages.maxNotesLength, { max: 500 }),
+          },
+        }}
+      >
+        <TextField asTextArea resize="vertical" />
+      </FormField>
       <FormButtons>
         <FormSubmitButton data-test="button-submit" variant="primary">
           {t(labels.save)}
