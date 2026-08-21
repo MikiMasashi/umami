@@ -118,3 +118,30 @@ export async function deleteTeam(request: APIRequestContext, auth: Auth, teamId:
 
   expect(response.status()).toBe(200);
 }
+
+export async function getWebsite(
+  request: APIRequestContext,
+  auth: Auth,
+  websiteId: string,
+): Promise<any> {
+  const response = await request.get(`/api/websites/${websiteId}`, {
+    headers: authHeaders(auth),
+  });
+
+  expect(response.status()).toBe(200);
+  return await response.json();
+}
+
+export async function updateWebsiteNote(
+  request: APIRequestContext,
+  auth: Auth,
+  websiteId: string,
+  note: string | null,
+): Promise<any> {
+  const response = await request.post(`/api/websites/${websiteId}`, {
+    headers: authHeaders(auth),
+    data: { note },
+  });
+
+  return response;
+}
