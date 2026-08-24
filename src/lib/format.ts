@@ -125,3 +125,21 @@ export function truncateString<T extends string | null | undefined>(
 ): T extends string ? string : T {
   return (value ? value.substring(0, maxLength) : value) as T extends string ? string : T;
 }
+
+const NOTES_SUMMARY_MAX_LENGTH = 60;
+
+// Summarizes a website's notes for list display: returns null when notes is
+// unset/empty (so no indicator is rendered), the notes as-is when it fits
+// within the summary length, or the first NOTES_SUMMARY_MAX_LENGTH
+// characters followed by an ellipsis when it is longer.
+export function summarizeNotes(notes?: string | null): string | null {
+  if (!notes) {
+    return null;
+  }
+
+  if (notes.length <= NOTES_SUMMARY_MAX_LENGTH) {
+    return notes;
+  }
+
+  return `${notes.slice(0, NOTES_SUMMARY_MAX_LENGTH)}…`;
+}

@@ -33,7 +33,10 @@ export async function GET(
 
   const website = await getWebsite(websiteId);
 
-  return json(website);
+  return json({
+    ...website,
+    canUpdate: await canUpdateWebsite(auth, websiteId),
+  });
 }
 
 export async function POST(
@@ -43,6 +46,7 @@ export async function POST(
   const schema = z.object({
     name: z.string().max(100).optional(),
     domain: z.string().max(500).optional(),
+    notes: z.string().max(500).nullable().optional(),
     shareId: z.string().max(50).nullable().optional(),
     replayConfig: z
       .object({
@@ -65,7 +69,7 @@ export async function POST(
   }
 
   const { websiteId } = await params;
-  const { name, domain, shareId, replayConfig } = body;
+  const { name, domain, notes, shareId, replayConfig } = body;
 
   if (!(await canUpdateWebsite(auth, websiteId))) {
     return unauthorized();
@@ -90,6 +94,9 @@ export async function POST(
     const website = await updateWebsite(websiteId, {
       name,
       domain,
+      ...(notes !== undefined && {
+        notes: notes === '' ? null : notes,
+      }),
       ...(replayConfig !== undefined && {
         replayConfig: nextReplayConfig as Prisma.InputJsonObject,
         recorderEnabled: getRecorderEnabled(nextReplayConfig),

@@ -1,0 +1,157 @@
+{
+  "story": "US-201",
+  "targets": [
+    {
+      "path": "src/app/(main)/websites/[websiteId]/settings/WebsiteEditForm.tsx",
+      "decision": "skip",
+      "acceptance_criteria": [
+        "US-201-1-1",
+        "US-201-1-2",
+        "US-201-1-3",
+        "US-201-1-4",
+        "US-201-2-1",
+        "US-201-4-2",
+        "US-201-5-2"
+      ],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::saves notes and shows a success toast",
+        "tests/e2e/website-notes.spec.ts::shows existing notes when opening the settings page",
+        "tests/e2e/website-notes.spec.ts::persists notes after a page reload",
+        "tests/e2e/website-notes.spec.ts::saves an empty notes field as unset",
+        "tests/e2e/website-notes.spec.ts::opens the settings page for a website without notes without error",
+        "tests/e2e/website-notes.spec.ts::rejects notes over 500 characters on the client and shows a validation message",
+        "tests/e2e/website-notes.spec.ts::allows a view-only permission user to see notes but not edit them",
+        "src/component-tests/WebsiteSettingsPage.test.tsx::renders the existing notes value in the notes field",
+        "src/component-tests/WebsiteSettingsPage.test.tsx::saves notes and shows a success message",
+        "src/component-tests/WebsiteSettingsPage.test.tsx::shows a validation message when notes exceeds 500 characters and does not submit",
+        "src/component-tests/WebsiteSettingsPage.test.tsx::disables the notes field and hides the save button when the user cannot update the website"
+      ],
+      "reason": "メモ入力・保存・既存値表示・500文字バリデーション・閲覧専用ユーザーの編集不可、いずれもレビュー済みE2E/コンポーネントテストで振る舞いとして検証済み。react-zen FormSubmitButtonのisValid読み取り副作用の回避、notesがnullの場合のtextarea制御化対応もこれらのテストで実際に検証されている。"
+    },
+    {
+      "path": "src/app/api/websites/[websiteId]/route.ts",
+      "decision": "skip",
+      "acceptance_criteria": [
+        "US-201-1-1",
+        "US-201-1-2",
+        "US-201-1-3",
+        "US-201-2-1",
+        "US-201-2-3",
+        "US-201-4-1",
+        "US-201-4-3",
+        "US-201-5-1",
+        "US-201-5-3"
+      ],
+      "covered_by": [
+        "tests/e2e/api-website-notes.spec.ts::keeps notes unset when updating only name and domain",
+        "tests/e2e/api-website-notes.spec.ts::saves successfully when notes is exactly 500 characters",
+        "tests/e2e/api-website-notes.spec.ts::rejects notes over 500 characters at the API level",
+        "tests/e2e/api-website-notes.spec.ts::rejects a notes update from a user without update permission",
+        "tests/e2e/api-website-notes.spec.ts::includes canUpdate in the website detail response for a team-view-only member",
+        "tests/e2e/website-notes.spec.ts::saves notes and shows a success toast",
+        "tests/e2e/website-notes.spec.ts::persists notes after a page reload"
+      ],
+      "reason": "GETへのcanUpdate追加、POSTのnotes正規化(空文字列→null、undefined→既存値維持)、500文字超過時の400、権限なし時の401、いずれもレビュー済みE2Eテストで直接検証されている。"
+    },
+    {
+      "path": "src/app/api/websites/route.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-1-1", "US-201-1-2", "US-201-1-4"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::shows existing notes when opening the settings page",
+        "tests/e2e/website-notes.spec.ts::saves an empty notes field as unset",
+        "tests/e2e/helpers.ts::createWebsite (via POST /api/websites with notes)"
+      ],
+      "reason": "作成APIのnotes正規化は、テストヘルパーcreateWebsiteを介してレビュー済みE2Eテスト全体から間接的に、かつ振る舞いとして検証されている。"
+    },
+    {
+      "path": "src/components/messages.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-4-2"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::rejects notes over 500 characters on the client and shows a validation message"
+      ],
+      "reason": "追加したnotesTooLongメッセージの文言は、レビュー済みE2Eテストで完全一致文言として表示確認されている。"
+    },
+    {
+      "path": "public/intl/messages/en-US.json",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-3-1", "US-201-3-2", "US-201-3-3", "US-201-4-2"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::rejects notes over 500 characters on the client and shows a validation message",
+        "tests/e2e/website-notes.spec.ts::shows the notes summary in the websites list"
+      ],
+      "reason": "追加した表示文言(\"Notes\"ラベル、エラー文言)はレビュー済みE2Eテストで確認されている。"
+    },
+    {
+      "path": "src/lib/format.ts",
+      "decision": "skip",
+      "acceptance_criteria": ["US-201-3-1", "US-201-3-2", "US-201-3-3"],
+      "covered_by": [
+        "tests/e2e/website-notes.spec.ts::shows the notes summary in the websites list",
+        "tests/e2e/website-notes.spec.ts::truncates a long notes value in the websites list",
+        "tests/e2e/website-notes.spec.ts::does not show any notes indicator for a website without notes",
+        "src/component-tests/WebsitesSettingsPage.test.tsx::renders the notes summary for a website with notes",
+        "src/component-tests/WebsitesSettingsPage.test.tsx::truncates a long notes value to 60 characters with an ellipsis",
+        "src/component-tests/WebsitesSettingsPage.test.tsx::does not render any notes text for a website without notes"
+      ],
+      "reason": "summarizeNotesの切り詰め・空/null処理は、単体テストに加えてレビュー済みE2E/コンポーネントテストでも振る舞いとして直接検証されている。"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "スキーマ定義の変更。常にreview対象。"
+    },
+    {
+      "path": "prisma/migrations/21_add_website_notes/migration.sql",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "DBマイグレーション。常にreview対象。"
+    },
+    {
+      "path": "vitest.config.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "テスト実行設定(testTimeout)の変更。常にreview対象。"
+    },
+    {
+      "path": "src/app/(main)/websites/WebsitesTable.tsx",
+      "decision": "review",
+      "acceptance_criteria": ["US-201-3-1", "US-201-3-2", "US-201-3-3"],
+      "covered_by": [],
+      "reason": "notes列の表示自体(data-test=text-notes)はレビュー済みテストで担保されるが、td[label=\"Notes\"]ロケータ契約を満たすためuseEffectでDOM属性(label)を後付けする実装(react-zenのDataTable/DataColumnが本来labelをtd要素へ反映しないための回避策)を含む。ライブラリの想定外の挙動に対する非標準的な対処であり、人間の確認を推奨する(docs/implementation/implementation-notes-US-201.md 3-3節参照)。"
+    },
+    {
+      "path": "src/tests/format-summarize-notes.test.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "本フェーズで新規作成した未レビューの単体テスト。"
+    },
+    {
+      "path": "src/tests/website-notes-route.test.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "本フェーズで新規作成した未レビューの単体テスト。"
+    },
+    {
+      "path": "src/tests/website-create-notes-route.test.ts",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "本フェーズで新規作成した未レビューの単体テスト。"
+    },
+    {
+      "path": "docs/implementation/implementation-notes-US-201.md",
+      "decision": "review",
+      "acceptance_criteria": [],
+      "covered_by": [],
+      "reason": "実装メモ・セルフレビューのドキュメント。人間による確認対象として列挙する。"
+    }
+  ]
+}
