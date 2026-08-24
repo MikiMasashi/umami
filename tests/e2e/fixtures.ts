@@ -29,3 +29,14 @@ export const websites = {
     domain: 'playwrightupdated.com',
   },
 };
+
+export const notes = {
+  // US-201 FR-2: 通常のメモ入力
+  short: 'Production site for the marketing team.',
+  // US-201 FR-3: 境界値（500文字ちょうど = 許容される最大長）
+  atLimit: 'A'.repeat(500),
+  // US-201 FR-3: 境界値超過（501文字 = 拒否されるべき最小長）
+  overLimit: 'A'.repeat(501),
+  // US-201 FR-4: 一覧の省略表示閾値（60文字）を超える長さのメモ
+  longForTruncation: 'B'.repeat(120),
+};

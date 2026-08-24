@@ -20,7 +20,11 @@ export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSa
   };
 
   return (
-    <Form onSubmit={handleSubmit} error={getErrorMessage(error)} values={website}>
+    <Form
+      onSubmit={handleSubmit}
+      error={getErrorMessage(error)}
+      values={website ? { ...website, notes: website.notes ?? '' } : website}
+    >
       <FormField name="id" label={t(labels.websiteId)}>
         <TextField data-test="text-field-websiteId" value={website?.id} isReadOnly allowCopy />
       </FormField>
@@ -45,6 +49,19 @@ export function WebsiteEditForm({ websiteId, onSave }: { websiteId: string; onSa
         }}
       >
         <TextField />
+      </FormField>
+      <FormField
+        label={t(labels.notes)}
+        data-test="input-notes"
+        name="notes"
+        rules={{
+          maxLength: {
+            value: 500,
+            message: t(messages.notesTooLong),
+          },
+        }}
+      >
+        <TextField asTextArea maxLength={500} />
       </FormField>
       <FormButtons>
         <FormSubmitButton data-test="button-submit" variant="primary">

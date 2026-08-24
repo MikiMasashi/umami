@@ -57,6 +57,7 @@ export async function addWebsite(
   auth: Auth,
   name: string,
   domain: string,
+  notes?: string,
 ) {
   const response = await request.post('/api/websites', {
     headers: authHeaders(auth),
@@ -69,6 +70,25 @@ export async function addWebsite(
   });
 
   expect(response.status()).toBe(200);
+
+  const website = await response.json();
+
+  // The create endpoint (`POST /api/websites`) does not accept `notes` (see
+  // `docs/specifications/api-specification.md` §1); notes can only be set via the
+  // update endpoint (`POST /api/websites/:websiteId`). Apply it here so callers can
+  // still request a "created with notes" fixture in one call.
+  if (notes !== undefined) {
+    const updateResponse = await request.post(`/api/websites/${website.id}`, {
+      headers: authHeaders(auth),
+      data: { notes },
+    });
+
+    expect(updateResponse.status()).toBe(200);
+
+    return updateResponse.json();
+  }
+
+  return website;
 }
 
 export async function deleteWebsite(request: APIRequestContext, auth: Auth, websiteId: string) {
@@ -92,6 +112,8 @@ export async function addUser(
   });
 
   expect(response.status()).toBe(200);
+
+  return response.json();
 }
 
 export async function deleteUser(request: APIRequestContext, auth: Auth, userId: string) {
@@ -109,6 +131,25 @@ export async function addTeam(request: APIRequestContext, auth: Auth, name: stri
   });
 
   expect(response.status()).toBe(200);
+
+  return response.json();
+}
+
+export async function addTeamUser(
+  request: APIRequestContext,
+  auth: Auth,
+  teamId: string,
+  userId: string,
+  role: string,
+) {
+  const response = await request.post(`/api/teams/${teamId}/users`, {
+    headers: authHeaders(auth),
+    data: { userId, role },
+  });
+
+  expect(response.status()).toBe(200);
+
+  return response.json();
 }
 
 export async function deleteTeam(request: APIRequestContext, auth: Auth, teamId: string) {
