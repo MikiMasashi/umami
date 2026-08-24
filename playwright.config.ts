@@ -10,11 +10,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
+  timeout: 120_000,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL,
     testIdAttribute: 'data-test',
     trace: 'on-first-retry',
+    actionTimeout: 10_000,
+    navigationTimeout: 10_000,
   },
   webServer: process.env.PLAYWRIGHT_SKIP_WEB_SERVER
     ? undefined

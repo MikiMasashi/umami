@@ -2,7 +2,6 @@ import { Icon, Row } from '@umami/react-zen';
 import { DataGrid } from '@/components/common/DataGrid';
 import Link from '@/components/common/Link';
 import { useLoginQuery, useNavigation, useUserWebsitesQuery } from '@/components/hooks';
-import { Favicon } from '@/index';
 import { WebsitesTable } from './WebsitesTable';
 
 export function WebsitesDataTable({
@@ -24,9 +23,6 @@ export function WebsitesDataTable({
 
   const renderLink = (row: any) => (
     <Row alignItems="center" gap="3">
-      <Icon size="md" color="muted">
-        <Favicon domain={row.domain} />
-      </Icon>
       <Link href={renderUrl(`/websites/${row.id}`, false)}>{row.name}</Link>
     </Row>
   );

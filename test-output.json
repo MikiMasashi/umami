@@ -1,0 +1,278 @@
+{
+  "config": {
+    "configFile": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\playwright.config.ts",
+    "rootDir": "C:/git/smart-se/verify-harness/umami-sample-proposed-copilot-35/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/git/smart-se/verify-harness/umami-sample-proposed-copilot-35/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/git/smart-se/verify-harness/umami-sample-proposed-copilot-35/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.60.0",
+    "workers": 6,
+    "webServer": {
+      "command": "pnpm dev",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "notes.spec.ts",
+      "file": "notes.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "US-201 website notes",
+          "file": "notes.spec.ts",
+          "line": 75,
+          "column": 6,
+          "specs": [
+            {
+              "title": "メモ新規入力・保存・再読み込み",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 13068,
+                      "error": {
+                        "message": "TimeoutError: apiRequestContext.post: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - → POST http://localhost:3000/api/auth/login\u001b[22m\n\u001b[2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.96 Safari/537.36\u001b[22m\n\u001b[2m    - accept: */*\u001b[22m\n\u001b[2m    - accept-encoding: gzip,deflate,br\u001b[22m\n\u001b[2m    - content-type: application/json\u001b[22m\n\u001b[2m    - content-length: 39\u001b[22m\n",
+                        "stack": "TimeoutError: apiRequestContext.post: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - → POST http://localhost:3000/api/auth/login\u001b[22m\n\u001b[2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.96 Safari/537.36\u001b[22m\n\u001b[2m    - accept: */*\u001b[22m\n\u001b[2m    - accept-encoding: gzip,deflate,br\u001b[22m\n\u001b[2m    - content-type: application/json\u001b[22m\n\u001b[2m    - content-length: 39\u001b[22m\n\n    at loginViaApi (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:25:34)\n    at loginPage (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:40:22)\n    at C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\notes.spec.ts:77:24",
+                        "location": {
+                          "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                          "column": 34,
+                          "line": 25
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mhelpers.ts:25\n\n\u001b[0m \u001b[90m 23 |\u001b[39m   password \u001b[33m=\u001b[39m umamiUser\u001b[33m.\u001b[39mpassword\u001b[33m,\u001b[39m\n \u001b[90m 24 |\u001b[39m )\u001b[33m:\u001b[39m \u001b[33mPromise\u001b[39m\u001b[33m<\u001b[39m\u001b[33mAuth\u001b[39m\u001b[33m>\u001b[39m {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 25 |\u001b[39m   \u001b[36mconst\u001b[39m response \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m request\u001b[33m.\u001b[39mpost(\u001b[32m'/api/auth/login'\u001b[39m\u001b[33m,\u001b[39m {\n \u001b[90m    |\u001b[39m                                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 26 |\u001b[39m     data\u001b[33m:\u001b[39m { username\u001b[33m,\u001b[39m password }\u001b[33m,\u001b[39m\n \u001b[90m 27 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 28 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                            "column": 34,
+                            "line": 25
+                          },
+                          "message": "TimeoutError: apiRequestContext.post: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - → POST http://localhost:3000/api/auth/login\u001b[22m\n\u001b[2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.96 Safari/537.36\u001b[22m\n\u001b[2m    - accept: */*\u001b[22m\n\u001b[2m    - accept-encoding: gzip,deflate,br\u001b[22m\n\u001b[2m    - content-type: application/json\u001b[22m\n\u001b[2m    - content-length: 39\u001b[22m\n\n\n   at helpers.ts:25\n\n  23 |   password = umamiUser.password,\n  24 | ): Promise<Auth> {\n> 25 |   const response = await request.post('/api/auth/login', {\n     |                                  ^\n  26 |     data: { username, password },\n  27 |   });\n  28 |\n    at loginViaApi (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:25:34)\n    at loginPage (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:40:22)\n    at C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\notes.spec.ts:77:24"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T15:55:07.749Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\test-results\\notes-US-201-website-notes-メモ新規入力・保存・再読み込み-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                        "column": 34,
+                        "line": 25
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9ac91c6ddef81ae1436f-4dce8436bfe33787e59e",
+              "file": "notes.spec.ts",
+              "line": 76,
+              "column": 3
+            },
+            {
+              "title": "一覧画面でメモ表示",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1385,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m200\u001b[39m\nReceived: \u001b[31m500\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m200\u001b[39m\nReceived: \u001b[31m500\u001b[39m\n    at loginViaApi (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:29:29)\n    at loginPage (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:40:16)\n    at C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\notes.spec.ts:105:18",
+                        "location": {
+                          "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                          "column": 29,
+                          "line": 29
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mhelpers.ts:29\n\n\u001b[0m \u001b[90m 27 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 28 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 29 |\u001b[39m   expect(response\u001b[33m.\u001b[39mstatus())\u001b[33m.\u001b[39mtoBe(\u001b[35m200\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 30 |\u001b[39m\n \u001b[90m 31 |\u001b[39m   \u001b[36mconst\u001b[39m body \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m response\u001b[33m.\u001b[39mjson()\u001b[33m;\u001b[39m\n \u001b[90m 32 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                            "column": 29,
+                            "line": 29
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m200\u001b[39m\nReceived: \u001b[31m500\u001b[39m\n\n   at helpers.ts:29\n\n  27 |   });\n  28 |\n> 29 |   expect(response.status()).toBe(200);\n     |                             ^\n  30 |\n  31 |   const body = await response.json();\n  32 |\n    at loginViaApi (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:29:29)\n    at loginPage (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:40:16)\n    at C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\notes.spec.ts:105:18"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T15:55:34.952Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\test-results\\notes-US-201-website-notes-一覧画面でメモ表示-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                        "column": 29,
+                        "line": 29
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9ac91c6ddef81ae1436f-f46c6f6f9f1f3ad3994a",
+              "file": "notes.spec.ts",
+              "line": 104,
+              "column": 3
+            },
+            {
+              "title": "権限なしユーザーの編集不可",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 2571,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m200\u001b[39m\nReceived: \u001b[31m500\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m200\u001b[39m\nReceived: \u001b[31m500\u001b[39m\n    at loginViaApi (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:29:29)\n    at C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\notes.spec.ts:135:23",
+                        "location": {
+                          "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                          "column": 29,
+                          "line": 29
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39mhelpers.ts:29\n\n\u001b[0m \u001b[90m 27 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 28 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 29 |\u001b[39m   expect(response\u001b[33m.\u001b[39mstatus())\u001b[33m.\u001b[39mtoBe(\u001b[35m200\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 30 |\u001b[39m\n \u001b[90m 31 |\u001b[39m   \u001b[36mconst\u001b[39m body \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m response\u001b[33m.\u001b[39mjson()\u001b[33m;\u001b[39m\n \u001b[90m 32 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                            "column": 29,
+                            "line": 29
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m200\u001b[39m\nReceived: \u001b[31m500\u001b[39m\n\n   at helpers.ts:29\n\n  27 |   });\n  28 |\n> 29 |   expect(response.status()).toBe(200);\n     |                             ^\n  30 |\n  31 |   const body = await response.json();\n  32 |\n    at loginViaApi (C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts:29:29)\n    at C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\notes.spec.ts:135:23"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-08-18T15:55:42.937Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\test-results\\notes-US-201-website-notes-権限なしユーザーの編集不可-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\git\\smart-se\\verify-harness\\umami-sample-proposed-copilot-35\\tests\\e2e\\helpers.ts",
+                        "column": 29,
+                        "line": 29
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9ac91c6ddef81ae1436f-fe1377468309b616d899",
+              "file": "notes.spec.ts",
+              "line": 134,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-18T15:53:57.693Z",
+    "duration": 111405.109,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

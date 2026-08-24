@@ -1,0 +1,91 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 [chromium] › tests\e2e\notes.spec.ts:76:3 › US-201 website notes › メモ新規入力・保存・再読み込み (19.0s)
+  ✘  2 [chromium] › tests\e2e\notes.spec.ts:104:3 › US-201 website notes › 一覧画面でメモ表示 (13.7s)
+  ✘  3 [chromium] › tests\e2e\notes.spec.ts:134:3 › US-201 website notes › 権限なしユーザーの編集不可 (10.6s)
+
+
+  1) [chromium] › tests\e2e\notes.spec.ts:76:3 › US-201 website notes › メモ新規入力・保存・再読み込み ────────────
+
+    Error: apiRequestContext.delete: read ECONNRESET
+    Call log:
+    [2m  - → DELETE http://localhost:3000/api/websites/e22a8979-9278-4733-837c-f52f610a292d[22m
+    [2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.96 Safari/537.36[22m
+    [2m    - accept: */*[22m
+    [2m    - accept-encoding: gzip,deflate,br[22m
+    [2m    - Content-Type: application/json[22m
+    [2m    - Authorization: bearer yRm2bHtbqlN0XPpnn5R0+0+UKejg8dWLr4M9O69ygQ3OkkAmG5U6+zrn51r8Awo2fFSPiCROdz2BYMPeQW3ZWudA02bcqB9Pskv2lmK1X0JSl1jGcwY2rZVSQvSs8cQ749GxUZdfHprFyg5moDI0e0ikL4vRYPuVHce4AT4nLUPsIJCN70GQBUinu9byl+d8aDYucO0n/XH6uJ8crrUI9xl0uad/7gd+bELnN6RX4c9C1s2dYvoGsPWIubUc+VTCreAhU4Rh2vMrZ2HxOeQNRRpKqw6eoPmKB+t9SP8ASseTeI3zlv0H5wRXzRVsvxJgj6nGmhL1E5+Z6MvK07ea+MXbI+qzWsWrCpJMsESGO3Ay0dIUUECguraaDehemEOdWpGep6SEV/d1dNqvuPfZdcQoxmEEIeLTyPa7WWUZQA3Xalw31Tuia/hrQ8b+5raIYaOAWKLVhUScbRpOyeudKBdnRn+hiYWIJVl9K5DJ5PZtgqMivoFoLA7a5yg/Jp0PIxg4iRoKeX8Q4QIdLAiXQc66OXF/LkdNmzgzYb21l3VMIXd0Lr4/ZaWdHt4sfYs12rnxRzDjARTPWT8CbdafT7NoQBdHLq2koQ/ZThF4JdJ1cj/M[22m
+
+
+       at helpers.ts:75
+
+      73 |
+      74 | export async function deleteWebsite(request: APIRequestContext, auth: Auth, websiteId: string) {
+    > 75 |   const response = await request.delete(`/api/websites/${websiteId}`, {
+         |                                        ^
+      76 |     headers: authHeaders(auth),
+      77 |   });
+      78 |
+        at deleteWebsite (C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\helpers.ts:75:40)
+        at C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\notes.spec.ts:100:13
+
+    Error Context: test-results\notes-US-201-website-notes-メモ新規入力・保存・再読み込み-chromium\error-context.md
+
+  2) [chromium] › tests\e2e\notes.spec.ts:104:3 › US-201 website notes › 一覧画面でメモ表示 ─────────────────
+
+    TimeoutError: apiRequestContext.post: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - → POST http://localhost:3000/api/auth/login[22m
+    [2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.96 Safari/537.36[22m
+    [2m    - accept: */*[22m
+    [2m    - accept-encoding: gzip,deflate,br[22m
+    [2m    - content-type: application/json[22m
+    [2m    - content-length: 39[22m
+
+
+       at helpers.ts:25
+
+      23 |   password = umamiUser.password,
+      24 | ): Promise<Auth> {
+    > 25 |   const response = await request.post('/api/auth/login', {
+         |                                  ^
+      26 |     data: { username, password },
+      27 |   });
+      28 |
+        at loginViaApi (C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\helpers.ts:25:34)
+        at loginPage (C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\helpers.ts:40:22)
+        at C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\notes.spec.ts:105:24
+
+    Error Context: test-results\notes-US-201-website-notes-一覧画面でメモ表示-chromium\error-context.md
+
+  3) [chromium] › tests\e2e\notes.spec.ts:134:3 › US-201 website notes › 権限なしユーザーの編集不可 ─────────────
+
+    TimeoutError: apiRequestContext.post: Timeout 10000ms exceeded.
+    Call log:
+    [2m  - → POST http://localhost:3000/api/auth/login[22m
+    [2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.96 Safari/537.36[22m
+    [2m    - accept: */*[22m
+    [2m    - accept-encoding: gzip,deflate,br[22m
+    [2m    - content-type: application/json[22m
+    [2m    - content-length: 39[22m
+
+
+       at helpers.ts:25
+
+      23 |   password = umamiUser.password,
+      24 | ): Promise<Auth> {
+    > 25 |   const response = await request.post('/api/auth/login', {
+         |                                  ^
+      26 |     data: { username, password },
+      27 |   });
+      28 |
+        at loginViaApi (C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\helpers.ts:25:34)
+        at C:\git\smart-se\verify-harness\umami-sample-proposed-copilot-35\tests\e2e\notes.spec.ts:135:29
+
+    Error Context: test-results\notes-US-201-website-notes-権限なしユーザーの編集不可-chromium\error-context.md
+
+  3 failed
+    [chromium] › tests\e2e\notes.spec.ts:76:3 › US-201 website notes › メモ新規入力・保存・再読み込み ─────────────
+    [chromium] › tests\e2e\notes.spec.ts:104:3 › US-201 website notes › 一覧画面でメモ表示 ──────────────────
+    [chromium] › tests\e2e\notes.spec.ts:134:3 › US-201 website notes › 権限なしユーザーの編集不可 ──────────────

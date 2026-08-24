@@ -6,6 +6,7 @@ import { getRecorderConfig, getRecorderEnabled } from '@/lib/recorder';
 import { parseRequest } from '@/lib/request';
 import { badRequest, json, ok, serverError, unauthorized } from '@/lib/response';
 import { canDeleteWebsite, canUpdateWebsite, canViewSharedWebsite } from '@/permissions';
+import { notesSchema } from '@/lib/notes';
 import {
   createShare,
   deleteSharesByEntityId,
@@ -43,6 +44,7 @@ export async function POST(
   const schema = z.object({
     name: z.string().max(100).optional(),
     domain: z.string().max(500).optional(),
+    notes: notesSchema.optional(),
     shareId: z.string().max(50).nullable().optional(),
     replayConfig: z
       .object({
@@ -65,7 +67,7 @@ export async function POST(
   }
 
   const { websiteId } = await params;
-  const { name, domain, shareId, replayConfig } = body;
+  const { name, domain, notes, shareId, replayConfig } = body;
 
   if (!(await canUpdateWebsite(auth, websiteId))) {
     return unauthorized();
@@ -87,14 +89,17 @@ export async function POST(
           },
     );
 
-    const website = await updateWebsite(websiteId, {
-      name,
-      domain,
+    const updateData: any = {
+      ...(name !== undefined && { name }),
+      ...(domain !== undefined && { domain }),
+      ...(notes !== undefined && { notes: notes === '' ? null : notes }),
       ...(replayConfig !== undefined && {
         replayConfig: nextReplayConfig as Prisma.InputJsonObject,
         recorderEnabled: getRecorderEnabled(nextReplayConfig),
       }),
-    });
+    };
+
+    const website = await updateWebsite(websiteId, updateData);
 
     if (shareId === null) {
       await deleteSharesByEntityId(website.id);
